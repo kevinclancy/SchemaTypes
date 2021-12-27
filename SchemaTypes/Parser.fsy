@@ -1,0 +1,40 @@
+﻿%{
+open System
+open Syntax
+
+%}
+
+%start Sort
+%type <Sort> Sort
+
+// (most recent comment, identifier string)
+%token <string*string> ID
+%token <char> CHAR
+%token <int> INT
+%token <string> STRLITERAL
+// (string is most recent comment)
+%token <string> LSQUAREBRACK
+%token RSQUAREBRACK
+%token STR PROP PROOF TO LPAREN RPAREN COLON TRUE
+%token LBARBRACK RBARBRACK LANGLE RANGLE EOF
+%token LBRACK RBRACK JOIN DOT BACKSLASH
+
+%left PIPE AND OR PLUS MINUS EQUALS
+%right AMPERSAND
+
+%% 
+
+Sort : STR { StString(parseState.ResultRange) }
+     | PROP { StProp(parseState.ResultRange) }
+     | PROOF Index { StProof($2, parseState.ResultRange) }
+     | LPAREN ID COLON Sort RPAREN TO Sort { StFun(snd $2, $4, $7, parseState.ResultRange) }
+
+IndAppList : IndAppList SimpleIndex { IndApp($1, $2, parseState.ResultRange) }
+           | SimpleIndex { $1 }
+
+SimpleIndex : STRLITERAL { IndStringLit($1, parseState.ResultRange) }
+            | ID { IndVar(snd $1, parseState.ResultRange) }
+            | TRUE { IndTrue(parseState.ResultRange) }
+
+Index : SimpleIndex { $1 }
+      | LPAREN IndAppList RPAREN { $2 }

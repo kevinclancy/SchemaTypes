@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30717.126
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "SchemaTypes3Test", "SchemaTypes3Test\SchemaTypes3Test.fsproj", "{DEDBE7B8-0874-4409-9AAE-3675DEC3C670}"
+EndProject
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "SchemaTypes", "SchemaTypes\SchemaTypes.fsproj", "{98F6258F-767C-4346-BF21-A7803602C7A1}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DEDBE7B8-0874-4409-9AAE-3675DEC3C670}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DEDBE7B8-0874-4409-9AAE-3675DEC3C670}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DEDBE7B8-0874-4409-9AAE-3675DEC3C670}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DEDBE7B8-0874-4409-9AAE-3675DEC3C670}.Release|Any CPU.Build.0 = Release|Any CPU
+		{98F6258F-767C-4346-BF21-A7803602C7A1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{98F6258F-767C-4346-BF21-A7803602C7A1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{98F6258F-767C-4346-BF21-A7803602C7A1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{98F6258F-767C-4346-BF21-A7803602C7A1}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F600F4D3-7745-4B22-8A9F-59A4F424A65A}
+	EndGlobalSection
+EndGlobal
