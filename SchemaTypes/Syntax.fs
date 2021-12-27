@@ -37,7 +37,7 @@ type Sort =
             | StFun(varName, _, _, _) when varName = x ->
                 this
             | StFun(varName, dom, cod, rng) ->
-                StFun(varName, dom.subst(i,x), dom.subst(i,x), rng)
+                StFun(varName, dom.subst(i,x), cod.subst(i,x), rng)
                 
 
 and Index =

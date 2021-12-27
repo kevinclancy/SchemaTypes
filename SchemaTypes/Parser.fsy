@@ -4,8 +4,11 @@ open Syntax
 
 %}
 
-%start Sort
-%type <Sort> Sort
+%start sort
+%type <Sort> sort
+
+%start index
+%type <Index> index
 
 // (most recent comment, identifier string)
 %token <string*string> ID
@@ -24,6 +27,8 @@ open Syntax
 
 %% 
 
+sort : Sort EOF { $1 }
+
 Sort : STR { StString(parseState.ResultRange) }
      | PROP { StProp(parseState.ResultRange) }
      | PROOF Index { StProof($2, parseState.ResultRange) }
@@ -35,6 +40,8 @@ IndAppList : IndAppList SimpleIndex { IndApp($1, $2, parseState.ResultRange) }
 SimpleIndex : STRLITERAL { IndStringLit($1, parseState.ResultRange) }
             | ID { IndVar(snd $1, parseState.ResultRange) }
             | TRUE { IndTrue(parseState.ResultRange) }
+
+index : Index EOF { $1 }
 
 Index : SimpleIndex { $1 }
       | LPAREN IndAppList RPAREN { $2 }

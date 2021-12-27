@@ -3,6 +3,25 @@
 open CheckComputation
 open Syntax
 
+let rec applyProofs (ctxt : SortContext) (sort : Sort) : Check<Sort> =
+    match sort with
+    | StFun(varName, StProof(ind,prfRng), cod, rng) ->
+        let provesInd (a : string, q : Sort) =
+            match q with
+            | StProof(j, _) when ind.IndexEquals(j) ->
+                true
+            | _ ->
+                false
+        match List.tryFind provesInd ctxt with
+        | Some(a, StProof(j, _)) ->
+            applyProofs ctxt (cod.subst(IndVar(a,noRange), varName))    
+        | Some(_, _) ->
+            failwith "impossible"
+        | None ->
+            Error [("Proof of " + ind.ToString() + " not in context.", noRange)]
+    | _ ->
+        Result sort
+
 let rec wfSort (ctxt : SortContext) (sort : Sort) : Check<unit> =
     match sort with
     | StString(_) ->
@@ -42,19 +61,20 @@ and sortCheckInd (ctxt : SortContext) (index : Index) : Check<Sort> =
     | IndApp(fn,arg,rng) ->
         check {
             let! fnSort = sortCheckInd ctxt fn
-            let! argSort = sortCheckInd ctxt fn
+            let! argSort = sortCheckInd ctxt arg
             let! varName,dom,cod =
                 match fnSort with
                 | StFun(varName, dom, cod, _) ->
                     Result (varName,dom,cod)
                 | _ ->
                     Error [("Expected " + fn.ToString() + " to have a function sort. Instead it has the sort " + fnSort.ToString(), rng)]
-            let! result =
+            let! applied =
                 match argSort.SortEquals(dom) with
                 | true ->
                     Result <| cod.subst(arg,varName)
                 | false ->
                     Error [("Argument sort " + argSort.ToString() + " does not match domain sort " + dom.ToString(), rng)]
+            let! result = applyProofs ctxt applied
             return result
         }
     | IndVar(varName, rng) ->
