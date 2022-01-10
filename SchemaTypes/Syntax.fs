@@ -6,6 +6,7 @@ type Range=Position*Position
 
 type Sort =
     | StString of Range
+    | StStringLit of string * Range
     | StProp of Range
     | StProof of Index * Range
     | StFun of varName : string * domSort : Sort * codSort : Sort * Range
@@ -38,7 +39,16 @@ type Sort =
                 this
             | StFun(varName, dom, cod, rng) ->
                 StFun(varName, dom.subst(i,x), cod.subst(i,x), rng)
-                
+        
+        member this.freeVars =
+            match this with
+            | StString(_)
+            | StProp(_) ->
+                Set.empty
+            | StProof(ind, _) ->
+                ind.freeVars
+            | StFun(varName, domSort, codSort, _) ->
+                Set.union domSort.freeVars (codSort.freeVars.Remove varName)
 
 and Index =
     | IndStringLit of string * Range
@@ -74,6 +84,17 @@ and Index =
             | IndTrue(_) ->
                 this
 
+        member this.freeVars : Set<string> =
+            match this with
+            | IndStringLit(_,_) ->
+                Set.empty
+            | IndApp(fn, arg, _) ->
+                Set.union fn.freeVars arg.freeVars
+            | IndVar(varName, _) ->
+                Set.singleton varName
+            | IndTrue(_) ->
+                Set.empty
+
 type Ty =
     | TyDict of keyVarName : string * domTy : Ty * Range
     | TyRecord of List<string * Ty> * Range
@@ -89,9 +110,31 @@ and Kind =
     | KTyFun of dom : Kind * cod : Kind * Range
     | KIndFun of dom : Sort * cod : Kind * Range
 
+type EntryType = 
+    | CStandard
+    // For bound strings which are among the keys locating the schema being kindchecked
+    | CPhysical
+
+type DecisionProcedureKey =
+    /// we must use the nth predicate argument as the key at this position
+    | ArgumentKey of n : int
+    /// we must use a specific string as the key at this position
+    | LiteralKey of string
+    /// the key at this position may be anything
+    | WildcardKey
+
+type Satellite =
+    /// all of the information necessary to create a decision procedure for a predicate in context
+    /// predicateName - the name of the predicate to decide
+    /// keys - the keys to look, where the first key is a global
+    | DecisionProcedure of predicateName : string * keys : List<DecisionProcedureKey>
+    /// we require a decision procedure for this predicate before the variable this satellite is attached to goes out of scope
+    | DecisionProcedureRequirement of predicateName : string
+
 type KindContext = Map<string, Kind>
-type SortContext = List<string * Sort>
+type SortContext = List<string * Sort * Set<Satellite> * EntryType>
 
 type AppClassifier =
     | IndToTy
     | TyToTy
+
