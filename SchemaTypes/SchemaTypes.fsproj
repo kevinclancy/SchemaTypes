@@ -8,11 +8,15 @@
   <ItemGroup>
     <None Include="Parser.fsy" />
     <None Include="Lexer.fsl" />
+    <Compile Include="Utils.fs" />
     <Compile Include="Syntax.fs" />
+    <Compile Include="ParseHelpers.fs" />
     <Compile Include="Parser.fs" />
     <Compile Include="Lexer.fs" />
     <Compile Include="CheckComputation.fs" />
     <Compile Include="SortCheck.fs" />
+    <Compile Include="DecisionProcedures.fs" />
+    <Compile Include="KindCheck.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

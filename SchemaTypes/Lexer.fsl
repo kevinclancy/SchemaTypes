@@ -34,17 +34,24 @@ rule token = parse
 | ")"            { RPAREN }
 | "{"            { LBRACK }
 | "}"            { RBRACK }
+| "|"            { PIPE }
 | ":"			 { COLON }
+| "::"           { DOUBLECOLON }
+| "=>"           { MAPSTO }
+| "union"        { UNION }
 | "prop"         { PROP }
 | "prf"          { PROOF }
 | "str"          { STR }
 | "->"           { TO }
+| ","            { COMMA }
 | "["            { LSQUAREBRACK(lastComment) }
 | "]"            { RSQUAREBRACK }
 | "{|"           { LBARBRACK }
 | "|}"           { RBARBRACK }
 | "<"            { LANGLE }
 | ">"            { RANGLE }
+| "*"            { ASTERISK }
+| "#"            { HASH }
 | ("//")         { lastComment <- "" ; comment lexbuf }
 // For string literals, we chop off the leading and trailing quotation marks
 | ['"'][^'"']*['"'] { STRLITERAL(lexeme lexbuf |> removeQuotes) }

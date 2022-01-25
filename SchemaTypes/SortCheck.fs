@@ -6,16 +6,16 @@ open Syntax
 let rec applyProofs (ctxt : SortContext) (sort : Sort) : Check<Sort> =
     match sort with
     | StFun(varName, StProof(ind,prfRng), cod, rng) ->
-        let provesInd (a : string, q : Sort, s : Set<Satellite>, e : EntryType) =
+        let provesInd (a : string, q : Sort, s : Set<Satellite>) =
             match q with
             | StProof(j, _) when ind.IndexEquals(j) ->
                 true
             | _ ->
                 false
         match List.tryFind provesInd ctxt with
-        | Some(a, StProof(j, _), _, _) ->
+        | Some(a, StProof(j, _), _) ->
             applyProofs ctxt (cod.subst(IndVar(a,noRange), varName))    
-        | Some(_,_,_,_) ->
+        | Some(_,_,_) ->
             failwith "impossible"
         | None ->
             Error [("Proof of " + ind.ToString() + " not in context.", noRange)]
@@ -24,9 +24,9 @@ let rec applyProofs (ctxt : SortContext) (sort : Sort) : Check<Sort> =
 
 let rec wfSort (ctxt : SortContext) (sort : Sort) : Check<unit> =
     match sort with
-    | StString(_) ->
-        Result ()
-    | StProp(_) ->
+    | StString(_)
+    | StProp(_)
+    | StStringLit(_,_) ->
         Result ()
     | StProof(ind,rng) ->
         check {
@@ -41,12 +41,12 @@ let rec wfSort (ctxt : SortContext) (sort : Sort) : Check<unit> =
     | StFun(varName, dom, cod, rng) ->
         check {
             do! withError "domain sort ill-formed" rng <| wfSort ctxt dom
-            do! withError "codomain sort ill-formed" rng <| wfSort ((varName, dom, Set.empty, CStandard) :: ctxt) cod
+            do! withError "codomain sort ill-formed" rng <| wfSort ((varName, dom, Set.empty) :: ctxt) cod
         }
 
 and wfSortContext (ctxt : SortContext) : Check<unit> =
     match ctxt with
-    | (var, st, s, _) :: rest ->
+    | (var, st, s) :: rest ->
         check {
             do! wfSort rest st
             // todo: check that satellites s are well formed
@@ -79,8 +79,8 @@ and sortCheckInd (ctxt : SortContext) (index : Index) : Check<Sort> =
             return result
         }
     | IndVar(varName, rng) ->
-        match List.tryFind (fun (x,_,_,_) -> x = varName) ctxt with
-        | Some(_, sort, _, _) ->
+        match List.tryFind (fun (x,_,_) -> x = varName) ctxt with
+        | Some(_, sort, _) ->
             Result sort
         | None ->
             Error [("Sort variable " + varName + " not in sorting context.", rng)]

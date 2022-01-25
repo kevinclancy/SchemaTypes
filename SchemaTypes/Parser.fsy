@@ -1,6 +1,7 @@
 ﻿%{
 open System
 open Syntax
+open ParseHelpers
 
 %}
 
@@ -17,10 +18,10 @@ open Syntax
 %token <string> STRLITERAL
 // (string is most recent comment)
 %token <string> LSQUAREBRACK
-%token RSQUAREBRACK
-%token STR PROP PROOF TO LPAREN RPAREN COLON TRUE
-%token LBARBRACK RBARBRACK LANGLE RANGLE EOF
-%token LBRACK RBRACK JOIN DOT BACKSLASH
+%token RSQUAREBRACK DOUBLECOLON UNION 
+%token STR PROP PROOF TO LPAREN RPAREN COLON TRUE PIPE
+%token LBARBRACK RBARBRACK LANGLE RANGLE EOF ASTERISK
+%token LBRACK RBRACK JOIN DOT BACKSLASH HASH MAPSTO COMMA
 
 %left PIPE AND OR PLUS MINUS EQUALS
 %right AMPERSAND
@@ -45,3 +46,32 @@ index : Index EOF { $1 }
 
 Index : SimpleIndex { $1 }
       | LPAREN IndAppList RPAREN { $2 }
+
+IndexList : Index COMMA IndexList { $1 :: $3 }
+          | Index { [$1] }
+
+kind : Kind EOF { $1 }
+
+Kind : ASTERISK { KProper(parseState.ResultRange) }
+     | ASTERISK ASTERISK { KProperPopulated(parseState.ResultRange) }
+     | Kind TO Kind { KTyFun($1, $3, parseState.ResultRange) }
+     | Sort TO Kind { KIndFun($1, $3, parseState.ResultRange) }
+
+type : Type EOF { $1 }
+
+Type : LBRACK LSQUAREBRACK ID COLON Sort RSQUAREBRACK COLON IndexList RANGLE Type { TyDict(snd $3, $5, makeDictDom $8 $10, parseState.ResultRange) }
+     | LBRACK FieldList RBRACK { TyRecord($2, parseState.ResultRange) }
+     | LBRACK ID COLON Sort PIPE Index RBRACK { TyStringRef(snd $2, $4, $6, parseState.ResultRange) }
+     | LPAREN ID COLON Sort RPAREN MAPSTO Type { TyIndAbs(snd $2, $4, $7, parseState.ResultRange) }
+     | LPAREN ID DOUBLECOLON Kind RPAREN MAPSTO Type { TyTyAbs(snd $2, $4, $7, parseState.ResultRange) }
+     | UNION LPAREN ID COLON Sort RPAREN MAPSTO Type { TyUnion(TyIndAbs(snd $3, $5, $8, parseState.ResultRange), parseState.ResultRange)  } 
+     | ApplicationSequence RPAREN { $1 }
+
+ApplicationSequence : ApplicationSequence Index { TyIndApp($1, $2, parseState.ResultRange) }
+                    | ApplicationSequence LSQUAREBRACK Type RSQUAREBRACK { TyTyApp($1, $3, parseState.ResultRange) }
+                    | LPAREN Type { $2 }
+
+Field : ID COLON Type { (snd $1, $3) }
+
+FieldList : Field COMMA FieldList { $1 :: $3 }
+          | Field { [$1] }

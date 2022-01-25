@@ -24,6 +24,13 @@ type Check<'A> =
             true
         | _ ->
             false
+
+    member this.GetResult =
+        match this with
+        | Result(v) ->
+            v
+        | _ ->
+            failwith "computation fails; check Succeeds property before reading Result"
         
 type CheckBuilder () =
     member x.Bind(comp : Check<'A>, func : 'A -> Check<'B>) =
