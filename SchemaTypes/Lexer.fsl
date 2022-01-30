@@ -39,8 +39,12 @@ rule token = parse
 | "::"           { DOUBLECOLON }
 | "=>"           { MAPSTO }
 | "union"        { UNION }
+| "let"          { LET }
+| "in"           { IN }
+| "="            { EQUAL }
 | "prop"         { PROP }
 | "prf"          { PROOF }
+| "true"         { TRUE }
 | "str"          { STR }
 | "->"           { TO }
 | ","            { COMMA }
@@ -52,6 +56,7 @@ rule token = parse
 | ">"            { RANGLE }
 | "*"            { ASTERISK }
 | "#"            { HASH }
+| "!"            { BANG }
 | ("//")         { lastComment <- "" ; comment lexbuf }
 // For string literals, we chop off the leading and trailing quotation marks
 | ['"'][^'"']*['"'] { STRLITERAL(lexeme lexbuf |> removeQuotes) }

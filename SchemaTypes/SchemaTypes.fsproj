@@ -6,6 +6,8 @@
   </PropertyGroup>
   
   <ItemGroup>
+    <Content Include="ECommerce.st" />
+    <None Include="Parser.fsyacc.output" />
     <None Include="Parser.fsy" />
     <None Include="Lexer.fsl" />
     <Compile Include="Utils.fs" />
@@ -19,6 +21,8 @@
     <Compile Include="KindCheck.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
+  
+  <ItemGroup />
 
   <ItemGroup>
     <PackageReference Include="FsLexYacc" Version="10.2.0" />

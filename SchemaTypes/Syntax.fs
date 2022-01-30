@@ -43,7 +43,7 @@ type Sort =
             | StProp(_) ->
                 this
             | StProof(ind, rng) ->
-                StProof(ind.substSort(i,x), rng)
+                StProof(ind.subst(i,x), rng)
             | StFun(varName, _, _, _) when varName = x ->
                 this
             | StFun(varName, dom, cod, rng) ->
@@ -82,9 +82,15 @@ and Index =
     with
         member this.String : string =
             match this with
-            | _ ->
-                failwith "todo"
-        
+            | IndStringLit(str, _) ->
+                "\"" + str + "\""
+            | IndApp(fn, arg, _) ->
+                "(" + fn.String + " " + arg.String + ")"
+            | IndVar(varName, _) ->
+                varName
+            | IndTrue(_) ->
+                "true"
+
         member this.Range =
             match this with
             | IndStringLit(_, rng)
@@ -107,12 +113,12 @@ and Index =
                 false
 
         /// Substitute i for x in this
-        member this.substSort(i : Index, x : string) : Index =
+        member this.subst(i : Index, x : string) : Index =
             match this with
             | IndStringLit(_,_) ->
                 this
             | IndApp(fn, arg, rng) ->
-                IndApp(fn.substSort(i,x), arg.substSort(i,x), rng)
+                IndApp(fn.subst(i,x), arg.subst(i,x), rng)
             | IndVar(varName, _) when varName = x ->
                 i
             | IndVar(_,_) ->
@@ -136,14 +142,15 @@ type Ty =
     | TyDict of keyVarName : string * keySort : Sort * domTy : Ty * Range
     | TyRecord of List<string * Ty> * Range
     | TyStringRef of selfVarName : string * boundSort : Sort * formula : Index * Range
-    | TyIndAbs of varName : string * codSort : Sort * domTy : Ty * Range
-    | TyTyAbs of varName : string * codKind : Kind * domTy : Ty * Range
+    | TyIndAbs of varName : string * domSort : Sort * codTy : Ty * Range
+    | TyTyAbs of varName : string * domKind : Kind * codTy : Ty * Range
     | TyUnion of indTyFun : Ty * Range
     | TyTyApp of fn : Ty * arg : Ty * Range
     | TyIndApp of fn : Ty * arg : Index * Range
-    
+    | TyVar of name : string * Range
+    | TyLet of name : string * rhs : Ty * body : Ty * Range
+
     with
-        
         member this.Range =
             match this with
             | TyDict(_,_,_,rng)
@@ -153,14 +160,38 @@ type Ty =
             | TyTyAbs(_,_,_,rng)
             | TyUnion(_,rng)
             | TyTyApp(_,_,rng)
-            | TyIndApp(_,_,rng) ->
+            | TyIndApp(_,_,rng) 
+            | TyVar(_,rng)
+            | TyLet(_,_,_,rng) ->
                 rng
 
 and Kind =
     | KProper of Range
     | KProperPopulated of Range
     | KTyFun of dom : Kind * cod : Kind * Range
-    | KIndFun of dom : Sort * cod : Kind * Range
+    | KIndFun of varName : string * dom : Sort * cod : Kind * Range
+
+    with
+        member this.subst(i : Index, x : string) =
+            match this with
+            | KProper(_)
+            | KProperPopulated(_) ->
+                this
+            | KTyFun(kDom, kCod, rng) ->
+                KTyFun(kDom.subst(i,x), kCod.subst(i,x), rng)
+            | KIndFun(varName, _, _, _) when varName = x ->
+                this
+            | KIndFun(varName, sDom, kCod, rng) ->
+                KIndFun(varName, sDom.subst(i,x), kCod.subst(i,x), rng)
+
+        member this.Range =
+            match this with
+            | KProper(rng)
+            | KProperPopulated(rng)
+            | KTyFun(_,_,rng)
+            | KIndFun(_,_,_,rng) ->
+                rng
+                
 
 type DecisionProcedureKey =
     /// We must use the string denoted by the variable varName at this position
