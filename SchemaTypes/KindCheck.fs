@@ -4,9 +4,9 @@ open Syntax
 open SortCheck
 open CheckComputation
 
-let rec applyProofs (ctxt : SortContext) (kind : Kind) : Check<Kind> =
+let rec applyProofs (ctxt : SortContext) (kind : Kind) (rng : Range) : Check<Kind> =
     match kind with
-    | KIndFun(varName, StProof(ind,prfRng), cod, rng) ->
+    | KIndFun(varName, StProof(ind,_), cod, _) ->
         let provesInd (a : string, q : Sort, s : Set<Satellite>) =
             match q with
             | StProof(j, _) when ind.IndexEquals(j) ->
@@ -15,11 +15,11 @@ let rec applyProofs (ctxt : SortContext) (kind : Kind) : Check<Kind> =
                 false
         match List.tryFind provesInd ctxt with
         | Some(a, StProof(j, _), _) ->
-            applyProofs ctxt (cod.subst(IndVar(a,noRange), varName))    
+            applyProofs ctxt (cod.subst(IndVar(a,noRange), varName)) rng    
         | Some(_,_,_) ->
             failwith "impossible"
         | None ->
-            Error [("Proof of " + ind.ToString() + " not in context.", noRange)]
+            Error [("Proof of " + ind.String + " not in context.", rng)]
     | _ ->
         Result kind
 
@@ -90,7 +90,7 @@ let rec wfKind (sctxt : SortContext) (k : Kind) : Check<unit> =
 let rec kindCheck (sctxt : SortContext) (kctxt : KindContext) (subject : Ty) (target : Kind) : Check<Kind> =
     check {
         let! kind = kindSynth sctxt kctxt subject
-        do! withError ("type " + subject.ToString() + "'s kind " + kind.ToString() + " is not a subkind of " + target.ToString())  
+        do! withError ("type " + subject.String + "'s kind " + kind.String + " is not a subkind of " + target.String)  
                       subject.Range
                       (checkSubKind sctxt kind target)
         return kind
@@ -157,7 +157,7 @@ and kindSynth (sctxt : SortContext) (kctxt : KindContext) (ty : Ty) : Check<Kind
                               kCod.Range
                               (checkSubKind sctxt kCod (KProper(noRange)))
                 | _ ->
-                    Error [("Unions can only be taken over index abstractions, not types of kind " + kFun.ToString(), rng)] 
+                    Error [("Unions can only be taken over index abstractions, not types of kind " + kFun.String, rng)] 
             return KProper(noRange)
         }
     | TyTyApp(fn, arg, rng) ->
@@ -168,13 +168,13 @@ and kindSynth (sctxt : SortContext) (kctxt : KindContext) (ty : Ty) : Check<Kind
                 match kFun with
                 | KTyFun(kDom, kCod, rng) ->
                     check {
-                        do! withError ("type " + arg.ToString() + "'s kind " + kArg.ToString() + " is not a subkind of " + kDom.ToString())
+                        do! withError ("type " + arg.String + "'s kind " + kArg.String + " is not a subkind of " + kDom.String)
                                       rng
                                       (checkSubKind sctxt kArg kDom)
                         return kCod
                     }
                 | _ ->
-                    Error [("expected " + fn.ToString() + " to be a type function. Instead, it has kind " + kFun.ToString(), rng)]
+                    Error [("expected " + fn.String + " to be a type function. Instead, it has kind " + kFun.String, rng)]
             return kCod
         }
     | TyIndApp(fn, arg, rng) ->
@@ -185,14 +185,14 @@ and kindSynth (sctxt : SortContext) (kctxt : KindContext) (ty : Ty) : Check<Kind
                 match kFun with
                 | KIndFun(varName, sDom, kCod, rng) ->
                     check {
-                        do! withError ("type " + arg.ToString() + "'s sort " + sArg.ToString() + " is not a subsort of " + sDom.ToString())
+                        do! withError ("type " + arg.String + "'s sort " + sArg.String + " is not a subsort of " + sDom.String)
                                       rng
                                       (checkSubSort sctxt sArg sDom)
                         return kCod.subst(arg, varName)
                     }
                 | _ ->
-                    Error [("Expected " + fn.ToString() + " to be an index abstraction, but instead it has kind " + kFun.ToString(), fn.Range)]
-            let! kRes' = applyProofs sctxt kRes
+                    Error [("Expected " + fn.String + " to be an index abstraction, but instead it has kind " + kFun.String, fn.Range)]
+            let! kRes' = applyProofs sctxt kRes arg.Range
             return kRes'
         }
     | TyVar(name, rng) ->

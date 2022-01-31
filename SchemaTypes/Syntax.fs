@@ -12,6 +12,19 @@ type Sort =
     | StFun of varName : string * domSort : Sort * codSort : Sort * Range
 
     with
+        member this.String =
+            match this with
+            | StString(_) ->
+                "str"
+            | StStringLit(s, _) ->
+                s
+            | StProp(_) ->
+                "prop"
+            | StProof(ind, _) ->
+                "prf " + ind.String
+            | StFun(varName, domSort, codSort, _) ->
+                "(" + varName + " : " + domSort.String + ")" + " -> " + codSort.String
+                
         member this.Range =
             match this with
             | StString(rng)
@@ -151,6 +164,32 @@ type Ty =
     | TyLet of name : string * rhsTy : Ty * bodyTy : Ty * Range
 
     with
+
+        member this.String =
+            match this with
+            | TyDict(keyVarName, keySort, domTy, _) ->
+                "{ [" + keyVarName + " : " + keySort.String + "] : " + domTy.String + " }"
+            | TyRecord(fields, _) ->
+                let fieldToString ((name, ty) : string * Ty) =
+                    name + " : " + ty.String
+                "{ " + (String.concat ", " <| List.map fieldToString fields) + " }"
+            | TyStringRef(selfVarName, boundSort, formula, _) ->
+                "{ " + selfVarName + " | " + formula.String + " }"
+            | TyIndAbs(varName, domSort, codTy, _) ->
+                "(" + varName + ":" + domSort.String + ") => " + codTy.String
+            | TyTyAbs(varName, domKind, codTy, _) ->
+                "(" + varName + "::" + domKind.String + ") => " + codTy.String
+            | TyUnion(indTyFun, _) ->
+                "union " + indTyFun.String
+            | TyTyApp(fn, arg, _) ->
+                "(" + fn.String + " !" + arg.String + ")"
+            | TyIndApp(fn, arg, _) ->
+                "(" + fn.String + " " + arg.String + ")"
+            | TyVar(name, _) ->
+                name
+            | TyLet(boundVarName, rhsTy, bodyTy, _) ->
+                "let " + boundVarName + " = " + rhsTy.String + "in\n" + bodyTy.String
+
         member this.substInd(varName : string, ind : Index) : Ty =
             match this with
             | TyDict(keyVarName, keySort, domTy, rng) when keyVarName <> varName ->
@@ -230,6 +269,17 @@ and Kind =
     | KIndFun of varName : string * dom : Sort * cod : Kind * Range
 
     with
+        member this.String =
+            match this with
+            | KProper(_) ->
+                "*"
+            | KProperPopulated(_) ->
+                "**"
+            | KTyFun(dom, cod, _) ->
+                dom.String + " -> " + cod.String
+            | KIndFun(varName, dom, cod, _) ->
+                "(" + varName + " : " + dom.String + ") -> " + cod.String
+            
         member this.subst(i : Index, x : string) =
             match this with
             | KProper(_)

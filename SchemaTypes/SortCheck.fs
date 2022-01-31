@@ -3,9 +3,9 @@
 open CheckComputation
 open Syntax
 
-let rec applyProofs (ctxt : SortContext) (sort : Sort) : Check<Sort> =
+let rec applyProofs (ctxt : SortContext) (sort : Sort) (rng : Range) : Check<Sort> =
     match sort with
-    | StFun(varName, StProof(ind,prfRng), cod, rng) ->
+    | StFun(varName, StProof(ind,_), cod, _) ->
         let provesInd (a : string, q : Sort, s : Set<Satellite>) =
             match q with
             | StProof(j, _) when ind.IndexEquals(j) ->
@@ -14,11 +14,11 @@ let rec applyProofs (ctxt : SortContext) (sort : Sort) : Check<Sort> =
                 false
         match List.tryFind provesInd ctxt with
         | Some(a, StProof(j, _), _) ->
-            applyProofs ctxt (cod.subst(IndVar(a,noRange), varName))    
+            applyProofs ctxt (cod.subst(IndVar(a,noRange), varName)) rng  
         | Some(_,_,_) ->
             failwith "impossible"
         | None ->
-            Error [("Proof of " + ind.ToString() + " not in context.", noRange)]
+            Error [("Proof of " + ind.String + " not in context.", rng)]
     | _ ->
         Result sort
 
@@ -30,13 +30,13 @@ let rec wfSort (ctxt : SortContext) (sort : Sort) : Check<unit> =
         Result ()
     | StProof(ind,rng) ->
         check {
-            let! indSort = withError (ind.ToString() + " failed to sort check.") rng <| sortCheckInd ctxt ind
+            let! indSort = withError (ind.String + " failed to sort check.") rng <| sortCheckInd ctxt ind
             do!
                 match indSort with
                 | StProp(_) ->
                     Result ()
                 | _ ->
-                    Error [("Expected " + ind.ToString() + " to have sort prop, but instead it has sort " + indSort.ToString(), rng)]
+                    Error [("Expected " + ind.String + " to have sort prop, but instead it has sort " + indSort.String, rng)]
         }
     | StFun(varName, dom, cod, rng) ->
         check {
@@ -68,14 +68,14 @@ and sortCheckInd (ctxt : SortContext) (index : Index) : Check<Sort> =
                 | StFun(varName, dom, cod, _) ->
                     Result (varName,dom,cod)
                 | _ ->
-                    Error [("Expected " + fn.ToString() + " to have a function sort. Instead it has the sort " + fnSort.ToString(), rng)]
+                    Error [("Expected " + fn.String + " to have a function sort. Instead it has the sort " + fnSort.String, rng)]
             let! applied =
                 match argSort.SortEquals(dom) with
                 | true ->
                     Result <| cod.subst(arg,varName)
                 | false ->
-                    Error [("Argument sort " + argSort.ToString() + " does not match domain sort " + dom.ToString(), rng)]
-            let! result = applyProofs ctxt applied
+                    Error [("Argument sort " + argSort.String + " does not match domain sort " + dom.String, rng)]
+            let! result = applyProofs ctxt applied arg.Range
             return result
         }
     | IndVar(varName, rng) ->
