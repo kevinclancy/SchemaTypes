@@ -19,10 +19,9 @@
     <Compile Include="SortCheck.fs" />
     <Compile Include="DecisionProcedures.fs" />
     <Compile Include="KindCheck.fs" />
+    <Compile Include="Eval.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
-  
-  <ItemGroup />
 
   <ItemGroup>
     <PackageReference Include="FsLexYacc" Version="10.2.0" />

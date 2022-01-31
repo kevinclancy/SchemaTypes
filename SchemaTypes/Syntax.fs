@@ -148,9 +148,67 @@ type Ty =
     | TyTyApp of fn : Ty * arg : Ty * Range
     | TyIndApp of fn : Ty * arg : Index * Range
     | TyVar of name : string * Range
-    | TyLet of name : string * rhs : Ty * body : Ty * Range
+    | TyLet of name : string * rhsTy : Ty * bodyTy : Ty * Range
 
     with
+        member this.substInd(varName : string, ind : Index) : Ty =
+            match this with
+            | TyDict(keyVarName, keySort, domTy, rng) when keyVarName <> varName ->
+                TyDict(keyVarName, keySort.subst(ind, varName), domTy.substInd(varName, ind), rng)
+            | TyDict(_, _, _, _) ->
+                this
+            | TyRecord(fields, rng) ->
+                TyRecord(List.map (fun (x : string, T : Ty) -> (x, T.substInd(varName, ind))) fields, rng)
+            | TyStringRef(selfVarName, boundSort, formula, rng) when selfVarName <> varName ->
+                TyStringRef(selfVarName, boundSort.subst(ind, varName), formula.subst(ind, varName), rng)
+            | TyStringRef(_, _, _, _) ->
+                this
+            | TyIndAbs(absVarName, domSort, codTy, rng) when varName <> absVarName ->
+                TyIndAbs(absVarName, domSort.subst(ind, varName), codTy.substInd(varName, ind), rng)
+            | TyIndAbs(absVarName, domSort, codTy, rng) ->
+                TyIndAbs(absVarName, domSort.subst(ind, varName), codTy, rng)
+            | TyTyAbs(absVarName, domKind, codTy, rng) ->
+                TyTyAbs(absVarName, domKind.subst(ind, varName), codTy.substInd(varName, ind), rng)
+            | TyUnion(indTyFun, rng) ->
+                TyUnion(indTyFun.substInd(varName, ind), rng)
+            | TyTyApp(fn, arg, rng) ->
+                TyTyApp(fn.substInd(varName, ind), arg.substInd(varName, ind), rng)
+            | TyIndApp(fn, arg, rng) ->
+                TyIndApp(fn.substInd(varName, ind), arg.subst(ind, varName), rng)
+            | TyVar(_, _) ->
+                this
+            | TyLet(boundVarName, rhsTy, bodyTy, rng) ->
+                TyLet(boundVarName, rhsTy.substInd(varName, ind), bodyTy.substInd(varName, ind), rng)
+
+        member this.substTy(varName : string, other : Ty) : Ty =
+            match this with
+            | TyDict(keyVarName, keySort, domTy, rng) ->
+                TyDict(keyVarName, keySort, domTy.substTy(varName, other), rng)
+            | TyRecord(fields, rng) ->
+                TyRecord(List.map (fun (name : string, ty : Ty) -> (name, ty.substTy(varName, other))) fields, rng)
+            | TyStringRef(_, _, _, _) ->
+                this
+            | TyIndAbs(absVar, domSort, codTy, rng) ->
+                TyIndAbs(absVar, domSort, codTy.substTy(varName, other), rng)
+            | TyTyAbs(absVar, domKind, codTy, rng) when absVar <> varName ->
+                TyTyAbs(absVar, domKind, codTy.substTy(varName, other), rng)
+            | TyTyAbs(_, _, _, _) ->
+                this
+            | TyUnion(indTyFun, rng) ->
+                TyUnion(indTyFun.substTy(varName, other), rng)
+            | TyTyApp(fn, arg, rng) ->
+                TyTyApp(fn.substTy(varName, other), arg.substTy(varName, other), rng)
+            | TyIndApp(fn, arg, rng) ->
+                TyIndApp(fn.substTy(varName, other), arg, rng)
+            | TyVar(name, rng) when name = varName ->
+                other
+            | TyVar(_, _) ->
+                this
+            | TyLet(boundVar, rhsTy, bodyTy, rng) when boundVar <> varName ->
+                TyLet(boundVar, rhsTy.substTy(varName, other), bodyTy.substTy(varName, other), rng)
+            | TyLet(boundVar, rhsTy, bodyTy, rng) ->
+                TyLet(boundVar, rhsTy.substTy(varName, other), bodyTy, rng)
+
         member this.Range =
             match this with
             | TyDict(_,_,_,rng)

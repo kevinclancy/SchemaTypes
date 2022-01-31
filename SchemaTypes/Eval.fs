@@ -42,13 +42,28 @@ let rec step (ty : Ty) : Option<Ty> =
             | Some arg' ->
                 Some <| TyTyApp(fn, arg', rng)
             | None ->
-                None
+                match fn with
+                | TyTyAbs(boundVarName, domKind, codTy, rng') ->
+                    Some <| codTy.substTy(boundVarName, arg)
+                | _ ->
+                    None
     | TyIndApp(fn, arg, rng) ->
-        Option.map (fun fn' -> TyIndApp(fn', arg, rng))
-                   (step fn)
+        match step fn with
+        | Some fn' ->
+            Some <| TyIndApp(fn', arg, rng)
+        | None ->
+            match fn with
+            | TyIndAbs(boundVarName, domSort, codTy, rng') ->
+                Some <| codTy.substInd(boundVarName, arg)
+            | _ ->
+                None
     | TyVar(_, _) ->
         None
     | TyLet(varName, rhs, body, rng) ->
-        
+        match step rhs with
+        | Some rhs' ->
+            Some <| TyLet(varName, rhs', body, rng)
+        | None ->
+            Some <| body.substTy(varName, rhs)
 
     
