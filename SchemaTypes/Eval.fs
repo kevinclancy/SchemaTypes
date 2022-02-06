@@ -95,3 +95,10 @@ let rec normalize (sctxt : SortContext) (ty : Ty) : Ty =
     let steps = Seq.unfold (fun x -> match step sctxt x with None -> None | Some x' -> Some (x' , x')) ty
     Seq.last steps
         
+type Ty with
+    member this.IsNormalized(sctxt : SortContext) =
+        match step sctxt this with
+        | Some(_) ->
+            false
+        | None ->
+            true

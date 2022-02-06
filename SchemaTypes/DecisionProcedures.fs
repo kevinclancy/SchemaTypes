@@ -33,8 +33,8 @@ let canonicalize (ctxt : SortContext) : CanonicalSortContext =
             canonicalizeAux rest { result with strings = (varName, srt) :: result.strings }
         | (varName, StProp(_), _) :: rest ->
             canonicalizeAux rest { result with props = result.props.Add varName }
-        | (varName, (StFun(_, _, _, _) as srt), satellites) :: rest ->
-            canonicalizeAux rest { result with predicates = (varName, srt, satellites) :: result.predicates }
+        | (varName, (StFun(_, _, _, _) as srt), _) :: rest ->
+            canonicalizeAux rest { result with predicates = (varName, srt) :: result.predicates }
         | (_, StProof(ind, rng), _) :: rest ->
             canonicalizeAux rest { result with proofs = result.proofs.Add ind }
         | [] ->

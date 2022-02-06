@@ -318,17 +318,17 @@ type DecisionProcedure = {
     keys : List<DecisionProcedureKey>
 }
 
-type Satellite =
-    /// all of the information necessary to create a decision procedure for a predicate in context
-    | DecisionProcedure of DecisionProcedure
-    /// we require a decision procedure for this predicate before the variable this satellite is attached to goes out of scope
-    | DecisionProcedureRequirement of predicateName : string
-
 type KindContext = Map<string, Kind>
 
 type SortContext = List<string * Sort * Set<Satellite>>
 
-type CanonicalSortContext = {
+and Satellite =
+    /// all of the information necessary to create a decision procedure for a predicate in context
+    | DecisionProcedure of CanonicalSortContext
+    /// we require a decision procedure for this predicate before the variable this satellite is attached to goes out of scope
+    | DecisionProcedureRequirement of CanonicalSortContext
+
+and CanonicalSortContext = {
     // ------- Left segment of context -------
 
     /// List of context entries bound to StString and StStringLit sorts
@@ -342,7 +342,8 @@ type CanonicalSortContext = {
     // ------- Middle segment of context -------
     
     /// Bindings with function sorts
-    predicates : List<string * Sort * Set<Satellite>>
+    //predicates : List<string * Sort * Set<Satellite>>
+    predicates : List<string * Sort>
 
     // ------- Right segment of context -------
  
@@ -359,6 +360,8 @@ type CanonicalSortContext = {
                 predicates = [] 
                 proofs = Set.empty
             }
+
+
 
 // to match proposition-in-contexts (one is a template, the other is a concrete proposition-in-context):
 //   Convert template to canonical form, where:
