@@ -27,7 +27,7 @@ open Utils
 %token <string> LSQUAREBRACK
 %token RSQUAREBRACK DOUBLECOLON UNION BANG LET IN EQUAL
 %token STR PROP PROOF TO LPAREN RPAREN COLON TRUE PIPE
-%token LBARBRACK RBARBRACK LANGLE RANGLE EOF ASTERISK
+%token LBARBRACK RBARBRACK LANGLE RANGLE EOF ASTERISK TYPE
 %token LBRACK RBRACK JOIN DOT BACKSLASH HASH MAPSTO COMMA
 
 %left PIPE AND OR PLUS MINUS EQUALS
@@ -83,7 +83,7 @@ SimpleType : LBRACK LSQUAREBRACK ID COLON Sort RSQUAREBRACK IndexList COLON Type
      | LetList { $1 }
      | Sort MAPSTO Type { TyIndAbs("_", $1, $3, parseState.ResultRange) }
 
-LetList : LET ID EQUAL Type LetList { TyLet(snd $2, $4, $5, parseState.ResultRange) } 
+LetList : TYPE ID EQUAL Type LetList { TyLet(snd $2, $4, $5, parseState.ResultRange) } 
         | IN Type { $2 }
 
 ApplicationSequence : ApplicationSequence Index { TyIndApp($1, $2, parseState.ResultRange) }

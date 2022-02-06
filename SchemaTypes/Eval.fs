@@ -1,17 +1,40 @@
 ﻿module Eval
 
 open Syntax
+open Utils
 
-let rec step (ty : Ty) : Option<Ty> =
+let rec applyProofs (sctxt : SortContext) (ty : Ty) : Ty =
+    match ty with
+    | TyIndAbs(varName, StProof(ind, _), codTy, rng) ->
+        let provesInd (a : string, q : Sort, s : Set<Satellite>) =
+            match q with
+            | StProof(j, _) when ind.IndexEquals(j) ->
+                true
+            | _ ->
+                false
+        match List.tryFind provesInd sctxt with
+        | Some(a, StProof(j, _), _) ->
+            applyProofs sctxt codTy
+        | Some(_, _, _) ->
+            failwith "impossible"
+        | None ->
+            ty
+    | _ ->
+        ty
+
+let rec step (sctxt : SortContext) (ty : Ty) : Option<Ty> =
     match ty with
     | TyDict(keyVarName, keySort, domTy, rng) ->
+        let sctxt' = (keyVarName, keySort, Set.empty) :: sctxt
         Option.map (fun domTy' -> TyDict(keyVarName, keySort, domTy', rng))
-                   (step domTy)
+                   (step sctxt' domTy)
     | TyRecord(fields, rng) ->
+        let sctxtWithStr (x : string) =
+            ("_" , StStringLit(x, noRange), Set.empty) :: sctxt
         let rec stepFields (fields : List<string * Ty>) : Option<List<string * Ty>> =
             match fields with
-            | (nm, ty) :: rest when (step ty).IsSome ->
-                Some <| (nm, (step ty).Value) :: rest
+            | (nm, ty) :: rest when (step (sctxtWithStr nm) ty).IsSome ->
+                Some <| (nm, (step (sctxtWithStr nm) ty).Value) :: rest
             | (nm, ty) :: rest ->
                 match stepFields rest with
                 | Some rest' ->
@@ -25,20 +48,21 @@ let rec step (ty : Ty) : Option<Ty> =
     | TyStringRef(_, _, _, _) ->
         None
     | TyIndAbs(varName, domSort, codTy, rng) ->
+        let sctxt' = (varName, domSort, Set.empty) :: sctxt
         Option.map (fun codTy' -> TyIndAbs(varName, domSort, codTy', rng))
-                   (step codTy)
+                   (step sctxt' codTy)
     | TyTyAbs(varName, domKind, codTy, rng) ->
         Option.map (fun codTy' -> TyTyAbs(varName, domKind, codTy', rng)) 
-                   (step codTy)
+                   (step sctxt codTy)
     | TyUnion(indTyFun, rng) ->
         Option.map (fun indTyFun' -> TyUnion(indTyFun', rng))
-                   (step indTyFun)
+                   (step sctxt indTyFun)
     | TyTyApp(fn, arg, rng) ->
-        match step fn with
+        match step sctxt fn with
         | Some fn' ->
             Some <| TyTyApp(fn', arg, rng)
         | None ->
-            match step arg with
+            match step sctxt arg with
             | Some arg' ->
                 Some <| TyTyApp(fn, arg', rng)
             | None ->
@@ -48,22 +72,26 @@ let rec step (ty : Ty) : Option<Ty> =
                 | _ ->
                     None
     | TyIndApp(fn, arg, rng) ->
-        match step fn with
+        match step sctxt fn with
         | Some fn' ->
             Some <| TyIndApp(fn', arg, rng)
         | None ->
             match fn with
             | TyIndAbs(boundVarName, domSort, codTy, rng') ->
-                Some <| codTy.substInd(boundVarName, arg)
+                let codTy' = codTy.substInd(boundVarName, arg)
+                Some <| applyProofs sctxt codTy'
             | _ ->
                 None
     | TyVar(_, _) ->
         None
     | TyLet(varName, rhs, body, rng) ->
-        match step rhs with
+        match step sctxt rhs with
         | Some rhs' ->
             Some <| TyLet(varName, rhs', body, rng)
         | None ->
             Some <| body.substTy(varName, rhs)
 
-    
+let rec normalize (sctxt : SortContext) (ty : Ty) : Ty =
+    let steps = Seq.unfold (fun x -> match step sctxt x with None -> None | Some x' -> Some (x' , x')) ty
+    Seq.last steps
+        
