@@ -4,6 +4,7 @@ open Utils
 open Syntax
 open Eval
 open DecisionProcedures
+open MCode
 
 let rec merge (a : SortContext) (b : SortContext) =
     match (a, b) with
@@ -13,23 +14,6 @@ let rec merge (a : SortContext) (b : SortContext) =
         []
     | _ ->
         failwith "tried to merge sort contexts that do not match"
-
-type MCode =
-    | MLine of string
-    | MBlock of List<MCode>
-
-type MCode with
-    member this.String =
-        let rec toStringAux (depth : int) (code : MCode) =
-            match code with
-            | MLine(str) ->
-                if depth = 0 then
-                    str
-                else
-                    " " + (String.replicate (depth - 1) ". ") + str
-            | MBlock(code) ->
-                String.concat "\n" (List.map (toStringAux <| depth+1) code)
-        toStringAux 0 this
 
 /// augment sort context with decision procedure requirement
 let augment (sctxt : SortContext) (reqCtxt : CanonicalSortContext) : SortContext =
@@ -50,7 +34,12 @@ let augment (sctxt : SortContext) (reqCtxt : CanonicalSortContext) : SortContext
             []
     augmentAux sctxt
 
-let rec gen (sctxt : SortContext) (ty : Ty) : SortContext * MCode =
+type GenContext = {
+    sctxt : SortContext
+
+}
+
+let rec genCode (sctxt : SortContext) (ty : Ty) : MCode =
     assert ty.IsNormalized(sctxt)
     match ty with
     | TyDict(keyVarName, keySort, domTy, rng) ->
