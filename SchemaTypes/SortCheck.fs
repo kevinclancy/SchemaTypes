@@ -6,16 +6,16 @@ open Syntax
 let rec applyProofs (ctxt : SortContext) (sort : Sort) (rng : Range) : Check<Sort> =
     match sort with
     | StFun(varName, StProof(ind,_), cod, _) ->
-        let provesInd (a : string, q : Sort, s : Set<Satellite>) =
+        let provesInd (a : string, q : Sort) =
             match q with
             | StProof(j, _) when ind.IndexEquals(j) ->
                 true
             | _ ->
                 false
         match List.tryFind provesInd ctxt with
-        | Some(a, StProof(j, _), _) ->
+        | Some(a, StProof(j, _)) ->
             applyProofs ctxt (cod.subst(IndVar(a,noRange), varName)) rng  
-        | Some(_,_,_) ->
+        | Some(_,_) ->
             failwith "impossible"
         | None ->
             Error [("Proof of " + ind.String + " not in context.", rng)]
@@ -41,12 +41,12 @@ let rec wfSort (ctxt : SortContext) (sort : Sort) : Check<unit> =
     | StFun(varName, dom, cod, rng) ->
         check {
             do! withError "domain sort ill-formed" rng <| wfSort ctxt dom
-            do! withError "codomain sort ill-formed" rng <| wfSort ((varName, dom, Set.empty) :: ctxt) cod
+            do! withError "codomain sort ill-formed" rng <| wfSort ((varName, dom) :: ctxt) cod
         }
 
 and wfSortContext (ctxt : SortContext) : Check<unit> =
     match ctxt with
-    | (var, st, s) :: rest ->
+    | (var, st) :: rest ->
         check {
             do! wfSort rest st
             // todo: check that satellites s are well formed
@@ -79,8 +79,8 @@ and sortCheckInd (ctxt : SortContext) (index : Index) : Check<Sort> =
             return result
         }
     | IndVar(varName, rng) ->
-        match List.tryFind (fun (x,_,_) -> x = varName) ctxt with
-        | Some(_, sort, _) ->
+        match List.tryFind (fun (x,_) -> x = varName) ctxt with
+        | Some(_, sort) ->
             Result sort
         | None ->
             Error [("Sort variable " + varName + " not in sorting context.", rng)]

@@ -7,6 +7,8 @@ open System.IO
 open FSharp.Text.Lexing
 open KindCheck
 open CheckComputation
+open Eval
+open CodeGen
 
 let rec printStack (stack : List<string*Range>) (level : int) =
     match stack with
@@ -37,10 +39,19 @@ let main argv =
                 exit 1
         match kindSynth [] Map.empty ty with
         | Result(kind) ->
-            0
+            let normTy = normalize [] ty
+            printfn "normalized type: %s\n\n\n" normTy.String
+            match genCode [] normTy GenComputation.GenState.Empty with
+            | GenComputation.Result((code, _), _) ->
+                printfn "gen succeeded!\n\nvalidate\n%s" code.String
+                0
+            | GenComputation.Error msg ->
+                printfn "error: %s" msg
+                1
         | Error stack ->
             printStack stack 0
             1
+
     with
     | :? IndexOutOfRangeException ->
         printfn "provide the name of a text file as the command line argument"

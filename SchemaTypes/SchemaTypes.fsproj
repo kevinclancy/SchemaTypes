@@ -20,6 +20,8 @@
     <Compile Include="DecisionProcedures.fs" />
     <Compile Include="KindCheck.fs" />
     <Compile Include="Eval.fs" />
+    <Compile Include="MCode.fs" />
+    <Compile Include="GenComputation.fs" />
     <Compile Include="CodeGen.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

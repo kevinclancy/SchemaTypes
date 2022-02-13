@@ -6,16 +6,16 @@ open Utils
 let rec applyProofs (sctxt : SortContext) (ty : Ty) : Ty =
     match ty with
     | TyIndAbs(varName, StProof(ind, _), codTy, rng) ->
-        let provesInd (a : string, q : Sort, s : Set<Satellite>) =
+        let provesInd (a : string, q : Sort) =
             match q with
             | StProof(j, _) when ind.IndexEquals(j) ->
                 true
             | _ ->
                 false
         match List.tryFind provesInd sctxt with
-        | Some(a, StProof(j, _), _) ->
+        | Some(a, StProof(j, _)) ->
             applyProofs sctxt codTy
-        | Some(_, _, _) ->
+        | Some(_, _) ->
             failwith "impossible"
         | None ->
             ty
@@ -25,12 +25,12 @@ let rec applyProofs (sctxt : SortContext) (ty : Ty) : Ty =
 let rec step (sctxt : SortContext) (ty : Ty) : Option<Ty> =
     match ty with
     | TyDict(keyVarName, keySort, domTy, rng) ->
-        let sctxt' = (keyVarName, keySort, Set.empty) :: sctxt
+        let sctxt' = (keyVarName, keySort) :: sctxt
         Option.map (fun domTy' -> TyDict(keyVarName, keySort, domTy', rng))
                    (step sctxt' domTy)
     | TyRecord(fields, rng) ->
         let sctxtWithStr (x : string) =
-            ("_" , StStringLit(x, noRange), Set.empty) :: sctxt
+            ("_" , StStringLit(x, noRange)) :: sctxt
         let rec stepFields (fields : List<string * Ty>) : Option<List<string * Ty>> =
             match fields with
             | (nm, ty) :: rest when (step (sctxtWithStr nm) ty).IsSome ->
@@ -48,7 +48,7 @@ let rec step (sctxt : SortContext) (ty : Ty) : Option<Ty> =
     | TyStringRef(_, _, _, _) ->
         None
     | TyIndAbs(varName, domSort, codTy, rng) ->
-        let sctxt' = (varName, domSort, Set.empty) :: sctxt
+        let sctxt' = (varName, domSort) :: sctxt
         Option.map (fun codTy' -> TyIndAbs(varName, domSort, codTy', rng))
                    (step sctxt' codTy)
     | TyTyAbs(varName, domKind, codTy, rng) ->

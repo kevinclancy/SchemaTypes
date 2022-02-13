@@ -3,6 +3,7 @@
 open FSharp.Text.Lexing
 open Syntax
 open MCode
+open DecisionProcedures
 
 type Range = Position * Position
 
@@ -26,37 +27,88 @@ type GenState = {
     suppliers: Set<CanonicalSortContext>
 }
 
-type Gen<'A> = GenState -> 'A * GenState
+type GenState with
+    static member Empty =
+        { nextId = 0 ; reqs = Set.empty ; suppliers = Set.empty }
+
+type Outcome<'A> = 
+    | Result of 'A * GenState
+    | Error of string
+
+type Gen<'A> = GenState -> Outcome<'A>
         
 type GenBuilder () =
     member x.Bind(comp : Gen<'A>, func : 'A -> Gen<'B>) : Gen<'B> =
-        (fun genState -> let (a,s') = comp genState in func a s')
+        (fun genState -> 
+            match comp genState with 
+            | Result(a, s') -> func a s'
+            | Error(msg) -> Error(msg) 
+        )
 
     member x.Return(value : 'A) : Gen<'A> =
-        (fun genState -> (value, genState))
+        (fun genState -> Result (value, genState))
+
+    member x.Zero() : Gen<unit> =
+        (fun genState -> Result ((), genState))
 
 let gen = new GenBuilder()
 
+let error (msg : string) (s : GenState) : Outcome<'A> =
+    Error msg
+
+let pass (s : GenState) : Outcome<unit> =
+    Result ((), s)
+
 /// Returns the set of all decision procedure requirements
-let getProcReqs (s : GenState) : Set<int * CanonicalSortContext> * GenState =
-    (s.reqs, s)
+let getReqs (s : GenState) : Outcome<Set<int * CanonicalSortContext>> =
+    Result (s.reqs, s)
 
 /// adds a new decision procedure requirement, returning its identifier
-let addProcReq (sctxt : CanonicalSortContext) (s : GenState) : int * GenState =
-    (s.nextId, { s with reqs = s.reqs.Add(s.nextId, sctxt) ; nextId = s.nextId + 1 })
+let addReq (sctxt : CanonicalSortContext) (s : GenState) : Outcome<int> =
+    Result (s.nextId, { s with reqs = s.reqs.Add(s.nextId, sctxt) ; nextId = s.nextId + 1 })
 
 /// Returns the set of decision procedure suppliers
-let getSuppliers (s : GenState) : Set<CanonicalSortContext> * GenState =
-   (s.suppliers, s) 
+let getSuppliers (s : GenState) : Outcome<Set<CanonicalSortContext>> =
+   Result (s.suppliers, s) 
 
 /// adds a new decision procedure supplier
-let addSupplier (sctxt : CanonicalSortContext) (s : GenState) : unit * GenState =
-    ((), { s with suppliers = s.suppliers.Add(sctxt) })
+let addSupplier (sctxt : CanonicalSortContext) (s : GenState) : Outcome<unit> =
+    Result ((), { s with suppliers = s.suppliers.Add(sctxt) })
 
 /// removes all suppliers and requirements that include applications of the predicate *predName*
 /// returns them in the result as (requirements, suppliers)
-let removePred (predName : string) (s : GenState) : (Set<int * CanonicalSortContext> * Set<CanonicalSortContext>) * GenState =
-    failwith "todo"
+let removePred (predName : string) (s : GenState) : Outcome< Set<int * CanonicalSortContext> * Set<CanonicalSortContext> > =
+
+    let appliesPred (ind : Index) =
+        match ind with
+        | FlatApp(func, args) when func = predName ->
+            true
+        | _ ->
+            false
+
+    let foldReq ((take, leave) : Set<int * CanonicalSortContext> * Set<int * CanonicalSortContext>) 
+                ((i, sctxt) : int * CanonicalSortContext) =
+
+        match Set.exists appliesPred sctxt.proofs with
+        | true ->
+            (take.Add (i, sctxt), leave)
+        | false ->
+            (take, leave.Add (i, sctxt))
+
+    let takeReqs, leaveReqs = Set.fold foldReq (Set.empty, Set.empty) s.reqs
+    
+    let foldSupplier ((take, leave) : Set<CanonicalSortContext> * Set<CanonicalSortContext>)
+                     (sctxt : CanonicalSortContext) = 
+
+        match Set.exists appliesPred sctxt.proofs with
+        | true ->
+            (take.Add sctxt, leave)
+        | false ->
+            (take, leave.Add sctxt)
+
+    let takeSupp, leaveSupp = Set.fold foldSupplier (Set.empty, Set.empty) s.suppliers
+
+    Result ((takeReqs, takeSupp), { s with reqs = leaveReqs ; suppliers = leaveSupp })
 
 let rec fold (init : 'S) (f : 'S -> 'A -> 'S) (l : List<Gen<'A>>) : Gen<'S> =
     match l with

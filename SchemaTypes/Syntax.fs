@@ -2,7 +2,22 @@
 
 open FSharp.Text.Lexing
 type Range=Position*Position
+open Utils
 
+let freshVar (freeVars : Set<string>) (seed : string) : string =
+    let seedStr, seedInt = 
+        match Seq.tryFindIndex System.Char.IsDigit seed with
+        | Some n ->
+            (seed.Substring(0,n), System.Int32.Parse(seed.Substring(n)))
+        | None ->
+            (seed, 0)
+    let rec getSuffix (seedStr : string) (candidate : int) : int =
+        match freeVars.Contains (seedStr + candidate.ToString()) with
+        | true ->
+            getSuffix seedStr (candidate + 1)
+        | false ->
+            candidate
+    seedStr + (getSuffix seedStr seedInt).ToString()
 
 type Sort =
     | StString of Range
@@ -23,7 +38,11 @@ type Sort =
             | StProof(ind, _) ->
                 "prf " + ind.String
             | StFun(varName, domSort, codSort, _) ->
-                "(" + varName + " : " + domSort.String + ")" + " -> " + codSort.String
+                match varName with
+                | "_" ->
+                    domSort.String + " -> " + codSort.String
+                | _ ->
+                    "(" + varName + " : " + domSort.String + ")" + " -> " + codSort.String
                 
         member this.Range =
             match this with
@@ -165,6 +184,52 @@ type Ty =
 
     with
 
+        member this.freeIndVars : Set<string> =
+            match this with
+            | TyDict(keyVarName, keySort, domTy, _) ->
+                Set.union keySort.freeVars (Set.remove keyVarName domTy.freeIndVars)
+            | TyRecord(fields, _) ->
+                Set.unionMany (List.map (fun (_, ty : Ty) -> ty.freeIndVars) fields) 
+            | TyStringRef(selfVarName, boundSort, formula, _) ->
+                Set.union boundSort.freeVars (Set.remove selfVarName formula.freeVars) 
+            | TyIndAbs(varName, domSort, codTy, _) ->
+                Set.union domSort.freeVars (Set.remove varName codTy.freeIndVars)
+            | TyTyAbs(varName, domKind, codTy, _) ->
+                Set.union domKind.freeIndVars codTy.freeIndVars
+            | TyUnion(indTyFun, _) ->
+                indTyFun.freeIndVars
+            | TyTyApp(fn, arg, _) ->
+                Set.union fn.freeIndVars arg.freeIndVars
+            | TyIndApp(fn, arg, _) -> 
+                Set.union fn.freeIndVars arg.freeVars
+            | TyVar(name, _) ->
+                Set.empty
+            | TyLet(name, rhsTy, bodyTy, _) ->
+                Set.union rhsTy.freeIndVars bodyTy.freeIndVars
+
+        member this.freeTyVars : Set<string> =
+            match this with
+            | TyDict(keyVarName, keySort, domTy, _) ->
+                domTy.freeIndVars
+            | TyRecord(fields, _) ->
+                Set.unionMany (List.map (fun (_, ty : Ty) -> ty.freeTyVars) fields) 
+            | TyStringRef(selfVarName, boundSort, formula, _) ->
+                Set.empty 
+            | TyIndAbs(varName, domSort, codTy, _) ->
+                codTy.freeTyVars
+            | TyTyAbs(varName, domKind, codTy, _) ->
+                Set.remove varName codTy.freeIndVars
+            | TyUnion(indTyFun, _) ->
+                indTyFun.freeIndVars
+            | TyTyApp(fn, arg, _) ->
+                Set.union fn.freeIndVars arg.freeIndVars
+            | TyIndApp(fn, arg, _) -> 
+                Set.union fn.freeIndVars arg.freeVars
+            | TyVar(name, _) ->
+                Set.singleton name
+            | TyLet(name, rhsTy, bodyTy, _) ->
+                Set.union rhsTy.freeTyVars (Set.remove name bodyTy.freeTyVars)           
+
         member this.String =
             match this with
             | TyDict(keyVarName, keySort, domTy, _) ->
@@ -193,17 +258,23 @@ type Ty =
         member this.substInd(varName : string, ind : Index) : Ty =
             match this with
             | TyDict(keyVarName, keySort, domTy, rng) when keyVarName <> varName ->
-                TyDict(keyVarName, keySort.subst(ind, varName), domTy.substInd(varName, ind), rng)
+                let keyVarName' = freshVar (Set.union domTy.freeIndVars ind.freeVars) keyVarName
+                let domTy' = domTy.substInd(keyVarName, IndVar(keyVarName', noRange))
+                TyDict(keyVarName', keySort.subst(ind, varName), domTy'.substInd(varName, ind), rng)
             | TyDict(_, _, _, _) ->
                 this
             | TyRecord(fields, rng) ->
                 TyRecord(List.map (fun (x : string, T : Ty) -> (x, T.substInd(varName, ind))) fields, rng)
             | TyStringRef(selfVarName, boundSort, formula, rng) when selfVarName <> varName ->
-                TyStringRef(selfVarName, boundSort.subst(ind, varName), formula.subst(ind, varName), rng)
+                let selfVarName' = freshVar (Set.union formula.freeVars ind.freeVars) selfVarName
+                let formula' = formula.subst(IndVar(selfVarName', noRange), selfVarName)
+                TyStringRef(selfVarName', boundSort.subst(ind, varName), formula'.subst(ind, varName), rng)
             | TyStringRef(_, _, _, _) ->
                 this
             | TyIndAbs(absVarName, domSort, codTy, rng) when varName <> absVarName ->
-                TyIndAbs(absVarName, domSort.subst(ind, varName), codTy.substInd(varName, ind), rng)
+                let absVarName' = freshVar (Set.union ind.freeVars codTy.freeIndVars) absVarName
+                let codTy' = codTy.substInd(absVarName, IndVar(absVarName', noRange))
+                TyIndAbs(absVarName', domSort.subst(ind, varName), codTy'.substInd(varName, ind), rng)
             | TyIndAbs(absVarName, domSort, codTy, rng) ->
                 TyIndAbs(absVarName, domSort.subst(ind, varName), codTy, rng)
             | TyTyAbs(absVarName, domKind, codTy, rng) ->
@@ -239,8 +310,8 @@ type Ty =
                 TyTyApp(fn.substTy(varName, other), arg.substTy(varName, other), rng)
             | TyIndApp(fn, arg, rng) ->
                 TyIndApp(fn.substTy(varName, other), arg, rng)
-            | TyVar(name, rng) when name = varName ->
-                other
+            | TyVar(name, varRng) when name = varName ->
+                other // TODO: maybe replace all ranges in other with varRng
             | TyVar(_, _) ->
                 this
             | TyLet(boundVar, rhsTy, bodyTy, rng) when boundVar <> varName ->
@@ -269,6 +340,16 @@ and Kind =
     | KIndFun of varName : string * dom : Sort * cod : Kind * Range
 
     with
+        member this.freeIndVars =
+            match this with
+            | KProper(_)
+            | KProperPopulated(_) ->
+                Set.empty
+            | KTyFun(kDom, kCod, _) ->
+                Set.union kDom.freeIndVars kCod.freeIndVars
+            | KIndFun(varName, sDom, kCod, _) ->
+                Set.union sDom.freeVars (Set.remove varName kCod.freeIndVars)
+
         member this.String =
             match this with
             | KProper(_) ->
@@ -307,6 +388,15 @@ type DecisionProcedureKey =
     /// we must use the string lit as the key at this position
     | LiteralKey of lit : string
 
+    with
+
+        member this.String =
+            match this with
+            | ArgumentKey(varName) ->
+                varName
+            | LiteralKey(lit) ->
+                "\"" + lit + "\""
+                 
 type DecisionProcedure = {
     /// names of string variables that this decision procedure abstracts over
     vars : Set<string>
@@ -320,7 +410,7 @@ type DecisionProcedure = {
 
 type KindContext = Map<string, Kind>
 
-type SortContext = List<string * Sort * Set<Satellite>>
+type SortContext = List<string * Sort>
 
 and Satellite =
     /// all of the information necessary to create a decision procedure for a predicate in context
@@ -353,6 +443,15 @@ and CanonicalSortContext = {
 }
 
     with
+        member this.String =
+            let stringsStr = String.concat " , " <| List.map (fun (x,st : Sort) -> sprintf "%s : %s" x st.String) this.strings
+            let predsStr = String.concat " , " <| List.map (fun (x,st : Sort) -> sprintf "%s : %s" x st.String) this.predicates
+            sprintf "strings: %s\npredicates: %s\nproofs: %s" stringsStr predsStr this.StringProofs
+               
+        member this.StringProofs =
+            String.concat "," (Seq.map (fun (ind : Index) -> ind.String) 
+                              (Set.toSeq this.proofs))
+
         static member empty : CanonicalSortContext =
             { 
                 strings = []

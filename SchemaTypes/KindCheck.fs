@@ -7,16 +7,16 @@ open CheckComputation
 let rec applyProofs (ctxt : SortContext) (kind : Kind) (rng : Range) : Check<Kind> =
     match kind with
     | KIndFun(varName, StProof(ind,_), cod, _) ->
-        let provesInd (a : string, q : Sort, s : Set<Satellite>) =
+        let provesInd (a : string, q : Sort) =
             match q with
             | StProof(j, _) when ind.IndexEquals(j) ->
                 true
             | _ ->
                 false
         match List.tryFind provesInd ctxt with
-        | Some(a, StProof(j, _), _) ->
+        | Some(a, StProof(j, _)) ->
             applyProofs ctxt (cod.subst(IndVar(a,noRange), varName)) rng    
-        | Some(_,_,_) ->
+        | Some(_,_) ->
             failwith "impossible"
         | None ->
             Error [("Proof of " + ind.String + " not in context.", rng)]
@@ -36,7 +36,7 @@ let rec subSort (sctxt : SortContext) (s1 : Sort) (s2 : Sort) =
         false
     | (StFun(varName1, domSort1, codSort1, _), StFun(varName2, domSort2, codSort2, _)) ->
         let domSub = subSort sctxt domSort2 domSort1
-        let sctxt' = (varName2, domSort2, Set.empty) :: sctxt 
+        let sctxt' = (varName2, domSort2) :: sctxt 
         let codSub = subSort sctxt' (codSort1.subst(IndVar(varName2, noRange), varName1)) codSort2
         domSub && codSub
     | _ ->
@@ -58,7 +58,7 @@ let rec subKind (sctxt : SortContext) (k1 : Kind) (k2 : Kind) : bool =
     | (KTyFun(dom1,cod1,_), KTyFun(dom2,cod2,_)) ->
         (subKind sctxt dom2 dom1) && (subKind sctxt cod1 cod2)
     | (KIndFun(var1, dom1,cod1,_), KIndFun(var2, dom2, cod2,_)) ->
-        let sctxt' = (var2, dom2, Set.empty) :: sctxt
+        let sctxt' = (var2, dom2) :: sctxt
         (subSort sctxt dom2 dom1) && (subKind sctxt' cod1 cod2)
     | _ ->
         false
@@ -83,7 +83,7 @@ let rec wfKind (sctxt : SortContext) (k : Kind) : Check<unit> =
     | KIndFun(varName, dom, cod, _) ->
         check {
             do! wfSort sctxt dom
-            let sctxt' = (varName, dom, Set.empty) :: sctxt
+            let sctxt' = (varName, dom) :: sctxt
             do! wfKind sctxt' cod
         }
 
@@ -103,7 +103,7 @@ and kindSynth (sctxt : SortContext) (kctxt : KindContext) (ty : Ty) : Check<Kind
             do! withError "expected string sort for dictionary key" 
                           keySort.Range 
                           (checkSubSort sctxt keySort (StString(noRange)))
-            let sctxt' = (keyVarName, keySort, Set.empty) :: sctxt
+            let sctxt' = (keyVarName, keySort) :: sctxt
             let! domKind = kindSynth sctxt' kctxt domTy
             do! withError "expected proper kind for dictionary value" 
                           domTy.Range
@@ -126,7 +126,7 @@ and kindSynth (sctxt : SortContext) (kctxt : KindContext) (ty : Ty) : Check<Kind
         }
     | TyStringRef(varName, sort, formula, rng) ->
         check {
-            let sctxt' = (varName, sort, Set.empty) :: sctxt
+            let sctxt' = (varName, sort) :: sctxt
             let! indSort = sortCheckInd sctxt' formula
             do! withError ("sort of index " + formula.String + "is not prop") 
                           formula.Range 
@@ -136,7 +136,7 @@ and kindSynth (sctxt : SortContext) (kctxt : KindContext) (ty : Ty) : Check<Kind
     | TyIndAbs(varName, domSort, codTy, rng) ->
         check {
             do! wfSort sctxt domSort
-            let sctxt' = (varName, domSort, Set.empty) :: sctxt
+            let sctxt' = (varName, domSort) :: sctxt
             let! codKind = kindSynth sctxt' kctxt codTy
             return KIndFun(varName, domSort, codKind, noRange)
         }

@@ -2,6 +2,7 @@
 
 open Syntax
 open SortCheck
+open CheckComputation
 
 let (|FlatApp|_|) (ind : Index) : Option<string * List<string>> =
     
@@ -26,20 +27,40 @@ let (|FlatApp|_|) (ind : Index) : Option<string * List<string>> =
 
 /// converts a Sort Context into an equivalent canonical sort context
 let canonicalize (ctxt : SortContext) : CanonicalSortContext =
-    let rec canonicalizeAux (ctxt : SortContext) (result : CanonicalSortContext) : CanonicalSortContext =
+    let rec makeVarsUnique (ctxt : SortContext) : SortContext =
+        let rec makeVarsUniqueAux (ctxt : SortContext) (visitedVars : Set<string>) : SortContext =
+            match ctxt with
+            | (varName, st) :: rest when visitedVars.Contains varName ->
+                let varName' = varName + "'"
+                let rest' = List.map (fun (x, st : Sort) -> (x, st.subst(IndVar(varName', noRange), varName))) rest
+                (varName', st) :: makeVarsUniqueAux rest' (visitedVars.Add(varName'))
+            | (varName, st) :: rest ->
+                (varName, st) :: makeVarsUniqueAux rest (visitedVars.Add(varName))
+            | [] ->
+                []
+        List.rev (makeVarsUniqueAux (List.rev ctxt) Set.empty)
+
+    let rec canonicalizeAux (ctxt : SortContext) 
+                            (result : CanonicalSortContext) : CanonicalSortContext =
         match ctxt with
-        | (varName, (StString(_) as srt), _) :: rest
-        | (varName, (StStringLit(_) as srt), _) :: rest ->
+        | (varName, (StString(_) as srt)) :: rest
+        | (varName, (StStringLit(_) as srt)) :: rest ->
             canonicalizeAux rest { result with strings = (varName, srt) :: result.strings }
-        | (varName, StProp(_), _) :: rest ->
+        | (varName, StProp(_)) :: rest ->
             canonicalizeAux rest { result with props = result.props.Add varName }
-        | (varName, (StFun(_, _, _, _) as srt), _) :: rest ->
+        | (varName, (StFun(_, _, _, _) as srt)) :: rest ->
             canonicalizeAux rest { result with predicates = (varName, srt) :: result.predicates }
-        | (_, StProof(ind, rng), _) :: rest ->
-            canonicalizeAux rest { result with proofs = result.proofs.Add ind }
+        | (_, StProof(ind, rng)) :: rest ->
+            let result' = 
+                match ind with
+                | IndTrue(_) ->
+                    result
+                | _ ->
+                    { result with proofs = result.proofs.Add ind }
+            canonicalizeAux rest result'
         | [] ->
             result
-    canonicalizeAux ctxt CanonicalSortContext.empty
+    canonicalizeAux (makeVarsUnique ctxt) CanonicalSortContext.empty
 
 type FlatApp = {
     /// name of the predicate
@@ -97,41 +118,40 @@ type InstantiationState = {
         static member ofSortContext (ctxt : CanonicalSortContext) =
             { substitutions = Map.empty ; proofs = Set.map FlatAppTarget.ofIndex ctxt.proofs }
 
+let appMatches (source : FlatApp) (target : FlatAppTarget) =
+    
+    /// sourceArg - the name of the variable we are trying to use as an instantiator
+    /// targetArg - first component is variable name, second component true iff it has already been instantiated
+    let argMatches (sourceArg : string) (targetArg : string * SubstitutionStatus) = 
+        match targetArg with
+        | (_, NotSubstituted) ->
+            true
+        | (varName, Substituted) when varName = sourceArg ->
+            true
+        | _ ->
+            false
 
-/// Instantiates a decision procedure using the current sort context, or reports None if impossible
+    source.predicate = target.predicate && List.forall2 argMatches source.args target.args 
+
+let getSubstitutions (subst : Map<string, string>) (source : FlatApp) (target : FlatAppTarget) : Map<string, string> =
+    let accSubst (substitutions : Map<string, string>) (sourceArg : string) (targetArg : string * SubstitutionStatus) =
+        match targetArg with
+        | (targetArgName, Substituted) ->
+            substitutions
+        | (targetArgName, NotSubstituted) ->
+            substitutions.Add(targetArgName, sourceArg)
+
+    List.fold2 accSubst subst source.args target.args
+
+/// Instantiates a decision procedure using the site context, or reports None if impossible
 let instantiate (siteContext : CanonicalSortContext) (decisionProcedure : CanonicalSortContext) : Option<List<DecisionProcedureKey>> =
     
-    let appMatches (source : FlatApp) (target : FlatAppTarget) =
-        
-        /// sourceArg - the name of the variable we are trying to use as an instantiator
-        /// targetArg - first component is variable name, second component true iff it has already been instantiated
-        let argMatches (sourceArg : string) (targetArg : string * SubstitutionStatus) = 
-            match targetArg with
-            | (_, NotSubstituted) ->
-                true
-            | (varName, Substituted) when varName = sourceArg ->
-                true
-            | _ ->
-                false
-
-        source.predicate = target.predicate && List.forall2 argMatches source.args target.args 
-
-    let getSubstitutions (subst : Map<string, string>) (source : FlatApp) (target : FlatAppTarget) : Map<string, string> =
-        let accSubst (substitutions : Map<string, string>) (sourceArg : string) (targetArg : string * SubstitutionStatus) =
-            match targetArg with
-            | (targetArgName, Substituted) ->
-                substitutions
-            | (targetArgName, NotSubstituted) ->
-                substitutions.Add(sourceArg, targetArgName)
-
-        List.fold2 accSubst subst source.args target.args
-
     let siteProofs = Set.map FlatApp.ofIndex siteContext.proofs
 
     let rec instantiateAux (state : InstantiationState) : Option<Map<string, string>> =
         match Set.isEmpty state.proofs with
         | true ->
-            Some <| Map.empty
+            Some <| state.substitutions
         | false ->
             let targetApp = state.proofs.MinimumElement
             let candidates = Set.filter (fun x -> appMatches x targetApp) siteProofs
@@ -154,7 +174,7 @@ let instantiate (siteContext : CanonicalSortContext) (decisionProcedure : Canoni
                 failwith "unreachable"
 
         // substitute into siteContext.strings - there is no longer a need for the "wildcard" decision procedure key type
-        Some <| List.map mapStringVar siteContext.strings
+        Some <| List.map mapStringVar decisionProcedure.strings
     | None ->
         None
     
