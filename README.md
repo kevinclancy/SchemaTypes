@@ -69,7 +69,7 @@ MyRoutine
 	s ^customers("kevin", "purchases", "1", "itemId")="1"
 	s ^customers("kevin", "purchases", "1", "cardId")="1"
 	
-	s ^customers("kevin", "card", "1", "billingAddr")="308 Muffin Road"
+	s ^customers("kevin", "card", "1", "billingAddr")="308 Drury Ln"
 	s ^customers("kevin", "card", "1", "cardType")="pisa"
 	
 	d validate
