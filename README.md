@@ -8,7 +8,7 @@ data, they should pair the data with its intended meaning; this saves anyone who
 from reading the field names, concrete data instances, code accessing it.
 
 Developers sometimes write informal schemas, which is better than neglecting to write a schema entirely. But *foreign keys*, data elements that refer to other locations in the database,
-are a typical weakpoint for these informal schemas.
+are a typical weak point for these informal schemas.
 
 For this reason, I've created an experimental schema language for MUMPS databases which aims to provide expressive support for foreign keys. Here is an example schema:
 
