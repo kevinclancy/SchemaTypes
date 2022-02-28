@@ -6,6 +6,8 @@
   </PropertyGroup>
   
   <ItemGroup>
+    <None Include="GroceryChain.st" />
+    <None Include="Chronicles.st" />
     <Content Include="ECommerce.st" />
     <None Include="Parser.fsyacc.output" />
     <None Include="Parser.fsy" />

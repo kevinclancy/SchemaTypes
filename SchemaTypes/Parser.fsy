@@ -71,7 +71,14 @@ ty : Type EOF { $1 }
 Type : SimpleType { $1 }
      | LPAREN ApplicationSequence RPAREN { $2 }
 
-SimpleType : LBRACK LSQUAREBRACK ID COLON Sort RSQUAREBRACK IndexList COLON Type RBRACK { TyDict(snd $3, $5, makeDictDom $7 $9, parseState.ResultRange) }
+
+IdBinding : ID COLON Sort { (snd $1, $3) }
+          | ID { (snd $1, StString(parseState.ResultRange)) }
+
+IdList : IdBinding COMMA IdList { $1 :: $3 }
+       | IdBinding { [$1] }
+
+SimpleType : LBRACK LSQUAREBRACK IdList RSQUAREBRACK IndexList COLON Type RBRACK { makeDictChain $3 (makeDictDom $5 $7) parseState.ResultRange }
      | LBRACK FieldList RBRACK { TyRecord($2, parseState.ResultRange) }
      | LBRACK ID COLON Sort PIPE Index RBRACK { TyStringRef(snd $2, $4, $6, parseState.ResultRange) }
      | LPAREN ID COLON Sort RPAREN MAPSTO Type { TyIndAbs(snd $2, $4, $7, parseState.ResultRange) }

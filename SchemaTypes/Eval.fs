@@ -93,7 +93,7 @@ let rec step (sctxt : SortContext) (ty : Ty) : Option<Ty> =
 
 let rec normalize (sctxt : SortContext) (ty : Ty) : Ty =
     let steps = Seq.unfold (fun x -> match step sctxt x with None -> None | Some x' -> Some (x' , x')) ty
-    Seq.last steps
+    List.last (ty :: (List.ofSeq steps))
         
 type Ty with
     member this.IsNormalized(sctxt : SortContext) =

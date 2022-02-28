@@ -148,6 +148,9 @@ let instantiate (siteContext : CanonicalSortContext) (decisionProcedure : Canoni
     
     let siteProofs = Set.map FlatApp.ofIndex siteContext.proofs
 
+    System.Console.WriteLine("***")
+    System.Console.WriteLine("site context: " + siteContext.String + "\n\nDecision procedure: " + decisionProcedure.String + "\n")
+
     let rec instantiateAux (state : InstantiationState) : Option<Map<string, string>> =
         match Set.isEmpty state.proofs with
         | true ->
@@ -173,11 +176,78 @@ let instantiate (siteContext : CanonicalSortContext) (decisionProcedure : Canoni
             | _ ->
                 failwith "unreachable"
 
+        System.Console.WriteLine("instantiation succeeded")
+        System.Console.WriteLine("***")
         // substitute into siteContext.strings - there is no longer a need for the "wildcard" decision procedure key type
         Some <| List.map mapStringVar decisionProcedure.strings
     | None ->
+        System.Console.WriteLine("instaniation failed")
+        System.Console.WriteLine("***")
         None
     
+/// Instantiates a decision procedure using the site context, or reports None if impossible
+let instantiate2 (siteContext : DecisionSite) (decisionProcedure : CanonicalSortContext) : Option<List<DecisionProcedureKey>> =
+    
+    let siteProofs = Set.map FlatApp.ofIndex (Set.add siteContext.formulaToDecide siteContext.sctxt.proofs)
+
+    System.Console.WriteLine("***")
+    System.Console.WriteLine("site context: " + siteContext.String + "\n\nDecision procedure: " + decisionProcedure.String + "\n")
+
+    let rec instantiateAux (state : InstantiationState) : Option<Map<string, string>> =
+        
+        System.Console.WriteLine(state.substitutions)
+
+        match Set.isEmpty state.proofs with
+        | true ->
+            Some <| state.substitutions
+        | false ->
+            let targetApp = state.proofs.MinimumElement
+            let candidates = Set.filter (fun x -> appMatches x targetApp) siteProofs
+            let tryCandidate(candidate : FlatApp) : Option<Map<string,string>> =
+                let substitutions' = getSubstitutions state.substitutions candidate targetApp
+                let proofs' = Set.map (fun (x : FlatAppTarget) -> x.subst substitutions') <| state.proofs.Remove targetApp                
+                instantiateAux { substitutions = substitutions' ; proofs = proofs' }
+
+            Seq.tryPick tryCandidate (Set.toSeq candidates) 
+
+    // if dp doesn't contain formula matching the one to decide, instantiation fails
+    let predMatches (i : Index) (j : Index) =
+        match i,j with
+        | FlatApp(pred0, _), FlatApp(pred1, _) when pred0 = pred1 ->
+            true
+        | _ ->
+            false
+
+    match List.exists (predMatches siteContext.formulaToDecide) (Set.toList decisionProcedure.proofs) with
+    | true ->
+        match instantiateAux (InstantiationState.ofSortContext decisionProcedure) with
+        | Some substitution ->
+            let mapStringVar ((name, sort) : string * Sort) =
+                match sort with
+                | StString(_) when substitution.[name] = siteContext.selfVar ->
+                    ArgumentKey("@loc")
+                | StString(_) ->
+                    ArgumentKey(substitution.[name])
+                | StStringLit(str, _) ->
+                    LiteralKey(str)
+                | _ ->
+                    failwith "unreachable"
+
+            System.Console.WriteLine("instantiation succeeded")
+            System.Console.WriteLine("***")
+            // substitute into siteContext.strings - there is no longer a need for the "wildcard" decision procedure key type
+            Some <| List.map mapStringVar decisionProcedure.strings
+        | None ->
+            System.Console.WriteLine("instaniation failed")
+            System.Console.WriteLine("***")
+            None        
+    | _ ->
+        System.Console.WriteLine("instaniation failed")
+        System.Console.WriteLine("***")
+        None
+
+
+
 
 //let addDecisionProcedure2 (ctxt : SortContext) (ind : Index) : SortContext =
 //    assert (

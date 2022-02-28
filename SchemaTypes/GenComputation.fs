@@ -21,7 +21,7 @@ type GenState = {
     nextId : int
     
     /// decision procedure requirements
-    reqs : Set<int * CanonicalSortContext>  
+    reqs : Set<int * DecisionSite>  
 
     /// decision procedure suppliers
     suppliers: Set<CanonicalSortContext>
@@ -60,11 +60,11 @@ let pass (s : GenState) : Outcome<unit> =
     Result ((), s)
 
 /// Returns the set of all decision procedure requirements
-let getReqs (s : GenState) : Outcome<Set<int * CanonicalSortContext>> =
+let getReqs (s : GenState) : Outcome<Set<int * DecisionSite>> =
     Result (s.reqs, s)
 
 /// adds a new decision procedure requirement, returning its identifier
-let addReq (sctxt : CanonicalSortContext) (s : GenState) : Outcome<int> =
+let addReq (sctxt : DecisionSite) (s : GenState) : Outcome<int> =
     Result (s.nextId, { s with reqs = s.reqs.Add(s.nextId, sctxt) ; nextId = s.nextId + 1 })
 
 /// Returns the set of decision procedure suppliers
@@ -77,7 +77,7 @@ let addSupplier (sctxt : CanonicalSortContext) (s : GenState) : Outcome<unit> =
 
 /// removes all suppliers and requirements that include applications of the predicate *predName*
 /// returns them in the result as (requirements, suppliers)
-let removePred (predName : string) (s : GenState) : Outcome< Set<int * CanonicalSortContext> * Set<CanonicalSortContext> > =
+let removePred (predName : string) (s : GenState) : Outcome< Set<int * DecisionSite> * Set<CanonicalSortContext> > =
 
     let appliesPred (ind : Index) =
         match ind with
@@ -86,14 +86,14 @@ let removePred (predName : string) (s : GenState) : Outcome< Set<int * Canonical
         | _ ->
             false
 
-    let foldReq ((take, leave) : Set<int * CanonicalSortContext> * Set<int * CanonicalSortContext>) 
-                ((i, sctxt) : int * CanonicalSortContext) =
+    let foldReq ((take, leave) : Set<int * DecisionSite> * Set<int * DecisionSite>) 
+                ((i, decisionSite) : int * DecisionSite) =
 
-        match Set.exists appliesPred sctxt.proofs with
+        match Set.exists appliesPred (Set.add decisionSite.formulaToDecide decisionSite.sctxt.proofs) with
         | true ->
-            (take.Add (i, sctxt), leave)
+            (take.Add (i, decisionSite), leave)
         | false ->
-            (take, leave.Add (i, sctxt))
+            (take, leave.Add (i, decisionSite))
 
     let takeReqs, leaveReqs = Set.fold foldReq (Set.empty, Set.empty) s.reqs
     

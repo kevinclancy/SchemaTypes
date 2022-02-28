@@ -24,7 +24,7 @@ type MCode with
                 if depth = 0 then
                     str
                 else
-                    " " + (String.replicate (depth - 1) "  ") + str
+                    " " + (String.replicate (depth - 1) " . ") + str
             | MBlock(code) ->
                 String.concat "\n" (List.map (toStringAux <| depth+1) code)
             | MBlockVar(n) ->

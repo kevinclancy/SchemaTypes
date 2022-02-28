@@ -51,6 +51,7 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
             let! assertBody, isBodyPopulated = genCode sctxt' domTy
             return MBlock [
                 MLine <| sprintf "n %s" keyVarName
+                MLine <| sprintf "s %s=\"\"" keyVarName
                 MLine <| sprintf "f  s %s=$o(@loc@(%s)) q:%s=\"\"  d" keyVarName keyVarName keyVarName
                 MBlock [
                     MLine <| sprintf "s loc=$na(@loc@(%s)),level=level+1" keyVarName
@@ -66,13 +67,13 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
             gen {
                 let sctxt' = ("_", StStringLit(nm, noRange)) :: sctxt
                 let! assertBody, isBodyPopulated = genCode sctxt' ty
-                let fieldAssertion = MBlock [
+                let fieldAssertion = [
                     MLine <| sprintf "s loc=$na(@loc@(\"%s\")),level=level+1" nm
                     MLine "d"
                     assertBody
                     MLine <| "s level=level-1,loc=$na(@loc,level)"
                 ]
-                return (fieldAssertion :: assertions), (prevPopulated || isBodyPopulated)
+                return (List.append fieldAssertion assertions), (prevPopulated || isBodyPopulated)
             }
         gen {
             let! assertions,allPopulated = foldM ([], true) foldField fields
@@ -84,17 +85,17 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
             gen {
                 let sctxt' = ("_", StStringLit(nm, noRange)) :: sctxt
                 let! assertBody, isBodyPopulated = genCode sctxt' ty
-                let fieldAssertion = MBlock [
-                    MLine <| sprintf "s loc=@na(^%s),level=level+1" nm
+                let fieldAssertion = [
+                    MLine <| sprintf "s loc=$na(^%s),level=level+1" nm
                     MLine "d"
                     assertBody
-                    MLine <| "s level=level-1"
+                    MLine <| "s level=level-1,loc=$na(@loc,level)"
                 ]
-                return (MLine "d" :: fieldAssertion :: assertions), (prevPopulated || isBodyPopulated)
+                return (List.append fieldAssertion assertions), (prevPopulated || isBodyPopulated)
             }
         gen {
             let! assertions,allPopulated = foldM ([], true) foldField fields
-            return (MBlock (MLine "n loc" :: assertions), allPopulated)
+            return (MBlock (MLine "n loc,level" :: MLine "s level=1" :: assertions), allPopulated)
         }
     | TyStringRef(selfVarName, boundSort, IndTrue(_), _) ->
         gen {
@@ -104,17 +105,18 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
                   strings = (selfVarName, boundSort) :: canCtxt.strings 
             }
             //// todo: add assertion for bound sort
-            return (MLine "i 0  w \"skip\"", true)
+            return (MBlock [MLine "i 0  w \"skip\""], true)
         }
     | TyStringRef(selfVarName, boundSort, formula, _) ->
         gen {
             let canCtxt = canonicalize sctxt 
-            let canCtxt' = { 
-                canCtxt with 
-                  strings = (selfVarName, boundSort) :: canCtxt.strings 
-                  proofs = canCtxt.proofs.Add(formula)
+            let site = { 
+                 sctxt = canCtxt  
+                 formulaToDecide = formula
+                 selfVar = selfVarName
+                 selfSort = boundSort
             }
-            let! reqId = addReq canCtxt'
+            let! reqId = addReq site
             //// todo: add assertion for bound sort
             return (MBlockVar reqId, true)
         }
@@ -122,6 +124,7 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
     | TyTyAbs(_, _, _, _) ->
         failwith "impossible if type is normalized and is proper type"
     | TyUnion(TyIndAbs(varName, domSort, codTy, _) as abs, _) ->
+        System.Console.WriteLine("joining " + varName)
         gen {
             let sctxt' = (varName, domSort) :: sctxt
             let! assertBody, isBodyPopulated = genCode sctxt' codTy
@@ -135,7 +138,7 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
                 match domSort with
                 | StFun(_, _, _, _) ->
                     let subProd (code : MCode) 
-                                ((i, reqCtxt, optKeys) : int * CanonicalSortContext * Option<List<DecisionProcedureKey>>) : Gen<MCode> =
+                                ((i, reqCtxt, optKeys) : int * DecisionSite * Option<List<DecisionProcedureKey>>) : Gen<MCode> =
                         match optKeys with
                         | Some(keys) ->
                             gen {
@@ -147,16 +150,23 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
                                     | ArgumentKey(_) ->
                                         failwith "todo: enforce outer-level record type"
                                 let ln = MBlock [
-                                    MLine <| sprintf "d assert($d(^%s(%s)))" headStr lookups
+                                    MLine <| sprintf "i '$d(^%s(%s)) w \"Validation Erro: Expected \"_$na(^%s(%s))_\" to be populated when validating \"_loc"
+                                                     headStr 
+                                                     lookups 
+                                                     headStr 
+                                                     lookups
                                 ]
                                 return code.subst(i, ln)
                             }
                         | None ->
                             error <| "Could not find decision procedure for: " + reqCtxt.String
+                    System.Console.WriteLine("varName:  " + varName)
                     gen {
+                        let! allSuppliers = getSuppliers
                         let! reqs, suppliers = removePred varName
                         // for each requirement site, try instantiating with all suppliers
-                        let instantiations = Set.map (fun (i, reqCtxt) -> (i, reqCtxt, List.tryPick (instantiate reqCtxt) (Set.toList suppliers))) reqs
+                        let instantiations = Set.map (fun (i, reqCtxt) -> (i, reqCtxt, List.tryPick (instantiate2 reqCtxt) (Set.toList allSuppliers))) reqs
+                        
                         // requirements should actually be a map probably
                         let! res = foldM assertBody subProd (Set.toList instantiations)
                         return res

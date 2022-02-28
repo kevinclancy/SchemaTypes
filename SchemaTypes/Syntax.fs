@@ -387,6 +387,8 @@ type DecisionProcedureKey =
     | ArgumentKey of varName : string
     /// we must use the string lit as the key at this position
     | LiteralKey of lit : string
+    /// this is the refinement variable; we must use the value @loc here
+    | Refinement
 
     with
 
@@ -444,7 +446,8 @@ and CanonicalSortContext = {
 
     with
         member this.String =
-            let stringsStr = String.concat " , " <| List.map (fun (x,st : Sort) -> sprintf "%s : %s" x st.String) this.strings
+            let strings' = List.filter (fun (x,st) -> x <> "" && x.[0] <> '_') this.strings
+            let stringsStr = String.concat " , " <| List.map (fun (x,st : Sort) -> sprintf "%s : %s" x st.String) strings'
             let predsStr = String.concat " , " <| List.map (fun (x,st : Sort) -> sprintf "%s : %s" x st.String) this.predicates
             sprintf "strings: %s\npredicates: %s\nproofs: %s" stringsStr predsStr this.StringProofs
                
@@ -456,10 +459,20 @@ and CanonicalSortContext = {
             { 
                 strings = []
                 props = Set.empty
-                predicates = [] 
+                predicates = []
                 proofs = Set.empty
             }
 
+
+type DecisionSite = {
+    sctxt : CanonicalSortContext
+    selfVar : string
+    selfSort : Sort
+    formulaToDecide : Index
+}
+    with
+        member this.String =
+            sprintf "%s\nselfVar: %s\nselfSort: %s\nformulaToDecide: %s" this.sctxt.String this.selfVar this.selfSort.String this.formulaToDecide.String
 
 
 // to match proposition-in-contexts (one is a template, the other is a concrete proposition-in-context):
