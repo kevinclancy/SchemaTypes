@@ -5,7 +5,7 @@ STATUS: Highly experimental.
 
 Modern database systems, and also crusty old ones such as MUMPS, advertise the fact that they are "schemaless" as if it is a feature. However, I believe that when someone creates 
 data, they should pair the data with its intended meaning; this saves anyone who stumbles upon the data a world of trouble trying to infer its full meaning 
-from reading the field names, concrete data instances, code accessing it.
+from reading the field names, examining concrete data instances, and poring through the code accessing it.
 
 Developers sometimes write informal schemas, which is better than neglecting to write a schema entirely. But *foreign keys*, data elements that refer to other locations in the database,
 are a typical weak point for these informal schemas.
