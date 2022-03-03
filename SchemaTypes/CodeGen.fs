@@ -89,13 +89,13 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
                     MLine <| sprintf "s loc=$na(^%s),level=level+1" nm
                     MLine "d"
                     assertBody
-                    MLine <| "s level=level-1,loc=$na(@loc,level)"
+                    MLine <| "s level=level-1"
                 ]
                 return (List.append fieldAssertion assertions), (prevPopulated || isBodyPopulated)
             }
         gen {
             let! assertions,allPopulated = foldM ([], true) foldField fields
-            return (MBlock (MLine "n loc,level" :: MLine "s level=1" :: assertions), allPopulated)
+            return (MBlock (MLine "n loc,level" :: MLine "s level=-1" :: assertions), allPopulated)
         }
     | TyStringRef(selfVarName, boundSort, IndTrue(_), _) ->
         gen {
@@ -150,7 +150,7 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
                                     | ArgumentKey(_) ->
                                         failwith "todo: enforce outer-level record type"
                                 let ln = MBlock [
-                                    MLine <| sprintf "i '$d(^%s(%s)) w \"Validation Erro: Expected \"_$na(^%s(%s))_\" to be populated when validating \"_loc"
+                                    MLine <| sprintf "i '$d(^%s(%s)) w \"Validation Error: Expected \"_$na(^%s(%s))_\" to be populated when validating \"_loc,!"
                                                      headStr 
                                                      lookups 
                                                      headStr 
