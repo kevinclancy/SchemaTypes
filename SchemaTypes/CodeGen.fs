@@ -7,37 +7,8 @@ open DecisionProcedures
 open MCode
 open GenComputation
 
-//let rec merge (a : SortContext) (b : SortContext) =
-//    match (a, b) with
-//    | ((aname, ast, asat) :: arest, (bname, bst, bsat) :: brest) when bname = aname && ast.SortEquals(bst) ->
-//        (aname, ast, Set.union asat bsat) :: merge arest brest
-//    | ([], []) ->
-//        []
-//    | _ ->
-//        failwith "tried to merge sort contexts that do not match"
-
-/// augment sort context with decision procedure requirement
-//let augment (sctxt : SortContext) (reqCtxt : CanonicalSortContext) : SortContext =
-//    let usedPreds (ind : Index) : Set<string> =
-//        match ind with
-//        | FlatApp(fn, _) ->
-//            Set.singleton fn
-//        | _ ->
-//            Set.empty
-//    let usedPreds = Set.unionMany (Set.map usedPreds reqCtxt.proofs)
-//    let rec augmentAux (sctxt : SortContext) =
-//        match sctxt with
-//        | (name, (StFun(_, _, _, _) as stFun)) :: rest when usedPreds.Contains name ->
-//            (name, stFun, satellites.Add(DecisionProcedureRequirement reqCtxt)) :: rest
-//        | head :: rest ->
-//            head :: augmentAux rest
-//        | [] ->
-//            []
-//    augmentAux sctxt
-
 type GenContext = {
     sctxt : SortContext
-
 }
 
 /// Returns a M block asserting that @loc satisfies the type,

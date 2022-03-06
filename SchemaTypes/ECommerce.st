@@ -33,5 +33,6 @@ in
 {
     items : { [x : str] (ItemId x) : { name : str, description : str } },
     cardTypes : { [x : str] (CardType x) : "*"  },
-    customers : { [x : str] (CustId x) : (Customer x) }
+    customers : { [x : str] (CustId x) : (Customer x) },
+    myAnonymousDict : { [x,y,z : str] : str }
 }
