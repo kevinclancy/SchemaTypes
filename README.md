@@ -48,8 +48,8 @@ in
 ```
 
 In this language, schemas are expressed as types, and types are layered over another language called the *subject language*, which is used to express keys (strings), sets of keys, and 
-relations on keys. Above, *ItemId*, *PurchasId*, *CardType*, and *CardId* are subject variables. ItemId, for example, represents a set of strings, and if x is a string then the proposition 
-(ItemId x) is true whenever x is an element of this set. 
+relations on keys. Above, ```ItemId```, ```PurchasId```, ```CardType```, and ```CardId``` are subject variables. ```ItemId```, for example, represents a set of strings, and if ```x``` is a string then the proposition 
+```(ItemId x)``` is true whenever ```x``` is an element of this set. 
 
 Near the bottom, the field items is given type ```{ [x : str] (ItemId x) : { name : str, description : str } }```. This is a dictionary type, but unlike a typical dictionary 
 type, its key set is not an arbitrary set of strings; instead, it is the set of all strings that satisfy the *ItemId* predicate.
@@ -62,19 +62,19 @@ MyRoutine
 	n x
 	s ^items("1", "name")="Slinky"
 	s ^items("1", "description")="A spring-based toy"
-	
+
 	s ^cardTypes("visa")="*"
 	s ^cardTypes("mastercard")="*"
-	
+
 	s ^customers("kevin", "purchases", "1", "itemId")="1"
 	s ^customers("kevin", "purchases", "1", "cardId")="1"
-	
+
 	s ^customers("kevin", "card", "1", "billingAddr")="308 Drury Ln"
 	s ^customers("kevin", "card", "1", "cardType")="pisa"
-	
+
 	d validate
 	
-    q
+	q
 
 validate
   ...
