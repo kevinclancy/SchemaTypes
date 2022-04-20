@@ -52,7 +52,7 @@ relations on keys. Above, ```ItemId```, ```PurchasId```, ```CardType```, and ```
 ```(ItemId x)``` is true whenever ```x``` is an element of this set. 
 
 Near the bottom, the field items is given type ```{ [x : str] (ItemId x) : { name : str, description : str } }```. This is a dictionary type, but unlike a typical dictionary 
-type, its key set is not an arbitrary set of strings; instead, it is the set of all strings that satisfy the *ItemId* predicate.
+type, its key set is not an arbitrary set of strings; instead, it is the set of all strings that satisfy the ```ItemId``` predicate.
 
 Saving the above schema in a file called "ECommerce.st" and then executing the command "dotnet run ECommerce.st" will generate an ugly chunk of MUMPS code under a tag called 
 *validate*. This tag can be used to validate that a database conforms to a schema. For example, we could paste validate in a routine containing the following code:
