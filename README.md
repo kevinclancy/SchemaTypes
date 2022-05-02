@@ -31,7 +31,7 @@ type Purchase = (cust : str) => prf (CustId cust) => {
 
 type Customer = (cust : str) => prf (CustId cust) => {
     purchases : {
-        [p : str] (PurchaseId p) : (Purchase cust)
+        [p : str] in (PurchaseId p) : (Purchase cust)
     },
     card : {
         [card : str] (CardId cust card) : Card
