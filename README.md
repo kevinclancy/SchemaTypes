@@ -1,8 +1,6 @@
 # SchemaTypes
 
-A dependently typed schema language for MUMPS.
-
-STATUS: Highly experimental.
+An experimental dependently typed schema language for MUMPS.
 
 Modern database systems, and also crusty old ones such as MUMPS, advertise the fact that they are "schemaless" as if it is a feature. However, I believe that when someone creates data, they should pair the data with its intended meaning; this saves anyone who stumbles upon the data a world of trouble trying to infer its full meaning from reading the field names, examining concrete data instances, and poring through the code accessing it.
 
