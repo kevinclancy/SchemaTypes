@@ -6,7 +6,7 @@ Modern database systems, and also crusty old ones such as MUMPS, advertise the f
 
 The distinction between the logical and physical layers is a central theme in the study of databases. The logical layer describes real-world entities and relations between them. The physical layer describes how these logical entities and relations are stored in memory. 
 
-By giving the programmer control of the physical layer, NoSQL databases allow the efficient implementation of common queries. However, modern NoSQL schema systems neglect the logical layer. For example, "Amazon NoSQL Workbench" uses types to describe the structure of data, but contains no types to describe foreign keys. Instead, foreign keys are given the type `string`.
+By giving the programmer control of the physical layer, NoSQL databases allow the efficient implementation of common queries. However, modern NoSQL schema systems neglect the logical layer. For example, [Amazon NoSQL Workbench](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/workbench.html) uses types to describe the structure of data, but contains no types to describe foreign keys. Instead, foreign keys are given the type `string`.
 
 Schema Types is a schema language for MUMPS in which both logical and physical layers are given first class treatment. An indexed type system combines two language layers; the lower "index" language exists independently from the upper language, which is defined in reference to the index language. Schema Types is an indexed type system in which the index language (called the "subject language" in Schema Types) describes logical database layer and the upper language describes the physical database layer.
 
