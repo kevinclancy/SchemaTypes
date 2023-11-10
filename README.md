@@ -46,7 +46,7 @@ in
 
 In this language, schemas are expressed as types, and the type language is layered over another language called the *subject language*, which is used to express keys (strings), sets of keys, and relations on keys. Above, ```ItemId```, ```PurchaseId```, ```CardType```, and ```CardId``` are subject variables. ```ItemId```, for example, represents a set of strings, and if ```x``` is a string then the proposition ```(ItemId x)``` is true whenever ```x``` is an element of this set. 
 
-Near the bottom, the field items is given type ```{ [x : str] (ItemId x) : { name : str, description : str } }```. This is a dictionary type, but unlike a typical dictionary type, its key set is not an arbitrary set of strings; instead, it is the set of all strings that satisfy the ```ItemId``` predicate.
+Near the bottom, the field ```items``` is given type ```{ [x : str] (ItemId x) : { name : str, description : str } }```. This is a dictionary type, but unlike a typical dictionary type, its key set is not an arbitrary set of strings; instead, it is the set of all strings that satisfy the ```ItemId``` predicate.
 
 Saving the above schema in a file called "ECommerce.st" and then executing the command "dotnet run ECommerce.st" will generate an ugly chunk of MUMPS code under a tag called *validate*. This tag can be used to partially validate that a database conforms to a schema. For example, we could paste validate in a routine containing the following code:
 
