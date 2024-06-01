@@ -95,5 +95,5 @@ Note that the ideas underlying this tool are applicable to other database system
 
 ## Why not use SQL?
 
-SQL schemas adequately formalize the logical database layer, so why not use SQL instead of bothering with SchemaTypes? I'm not knowledgable enough on the advantages and disadvantages of SQL over hierarchical database systems to discuss this. However, developers are actively engaged in developing new hierarchical databases systems, and many enormous legacy systems already use hierarchical databases. As a developer, I want these systems to have fully formalized schemas so that they are easier for me to work with.  
+SQL schemas adequately formalize the logical database layer, so why not use SQL instead of bothering with SchemaTypes? I'm not knowledgable enough on the advantages and disadvantages of SQL over hierarchical database systems to discuss this. However, developers are actively engaged in developing new hierarchical databases systems, and many enormous legacy systems already use hierarchical databases. As a developer, I want these databases to have fully formalized schemas so that they are easier for me to work with.  
 
