@@ -2,6 +2,8 @@
 
 An experimental dependently typed schema language for MUMPS.
 
+schema_kindcheck.pdf contains an incomplete formalization of this prototype. It is only recommended for readers with knowledge of operational and categorical semantics. If you read it, keep in mind that it's a work in progress, and becomes a bit disjointed and incoherent in later pages. Please contact me if you're interested in helping.
+
 ## Introduction
 
 Modern database systems, and also crusty old ones such as MUMPS, advertise the fact that they are "schemaless" as if it is a feature. However, I believe that when someone creates data, they should pair the data with its intended meaning; this saves anyone who stumbles upon the data a world of trouble trying to infer its full meaning from reading the field names, examining concrete data instances, and poring through the code accessing it.
