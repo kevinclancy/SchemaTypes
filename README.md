@@ -93,7 +93,7 @@ In general, if the database does conform to the schema, the partial validator wi
 
 ## Existing Schema Languages for Hierarchical Database Systems
 
-Note that the ideas underlying this tool are applicable to other database systems besides MUMPs. Most generally, they apply to a class of database systems that I call "hierarchical"; this class includes document databases, key-value stores, and systems such as DynamoDB, which combine elements of both. Attempts to develop schema languages for these database systems have neglected the logical layer. For example, consider [Amazon NoSQL Workbench](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/workbench.html) for DynamoDB. It uses types to describe the structure of data but contains no types to describe foreign keys. Instead, foreign keys are given the type `string`.
+Note that the ideas underlying this tool are applicable to other database systems besides MUMPS. Most generally, they apply to a class of database systems that I call "hierarchical"; this class includes document databases, key-value stores, and systems such as DynamoDB, which combine elements of both. Attempts to develop schema languages for these database systems have neglected the logical layer. For example, consider [Amazon NoSQL Workbench](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/workbench.html) for DynamoDB. It uses types to describe the structure of data but contains no types to describe foreign keys. Instead, foreign keys are given the type `string`.
 
 ## Why not use SQL?
 
