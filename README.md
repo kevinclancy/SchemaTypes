@@ -24,43 +24,43 @@ Schema Types is a schema language for MUMPS in which both logical and physical l
 
 Here is an example schema:
 ```
-union (ItemId : str -> prop) =>
-union (CustId : str -> prop) =>
-union (PurchaseId : str -> prop) =>
-union (CardType : str -> prop) =>
-union (CardId : (x : str) -> prf (CustId x) -> str -> prop) =>
+union (ItemId : (item : str) -> prop) =>
+union (CustId : (cust : str) -> prop) =>
+union (PurchaseId : (purchase : str) -> prop) =>
+union (CardType : (cardType : str) -> prop) =>
+union (CardId : (cust : str, card : str | CustId(cust)) -> prop) =>
 
 type Card = {
     billingAddr : str,
-    cardType : { x : str | (CardType x) }
+    cardType : { x : str | CardType(x) }
 }
 
-type Purchase = (cust : str) => prf (CustId cust) => {
-    itemId : { x : str | (ItemId x) },
-    cardId : { x : str | (CardId cust x) }
+type Purchase = (cust : str) => prf CustId(cust) => {
+    itemId : { x : str | ItemId(x) },
+    cardId : { x : str | CardId(cust, x) }
 }
 
-type Customer = (cust : str) => prf (CustId cust) => {
+type Customer = (cust : str) => prf CustId(cust) => {
     purchases : {
-        [p : str] in (PurchaseId p) : (Purchase cust)
+        [p : str] PurchaseId(p) : (Purchase cust)
     },
     card : {
-        [card : str] (CardId cust card) : Card
+        [card : str] CardId(cust, card) : Card
     }
 }
 
 in
 
 {
-    items : { [x : str] (ItemId x) : { name : str, description : str } },
-    cardTypes : { [x : str] (CardType x) : "*"  },
-    customers : { [x : str] (CustId x) : (Customer x) }
+    items : { [x : str] ItemId(x) : { name : str, description : str } },
+    cardTypes : { [x : str] CardType(x) : "*"  },
+    customers : { [x : str] CustId(x) : (Customer x) }
 }
 ```
 
-In this language, schemas are expressed as types, in which we find embedded expressions of the subject language, which are used to express keys (strings), sets of keys, and relations on keys. Above, ```ItemId```, ```PurchaseId```, ```CardType```, and ```CardId``` are subject variables. ```ItemId```, for example, represents the set of strings ```x``` such that ```(ItemId x)``` is true. 
+In this language, schemas are expressed as types, in which we find embedded expressions of the subject language, which are used to express keys (strings), sets of keys, and relations on keys. Above, ```ItemId```, ```PurchaseId```, ```CardType```, and ```CardId``` are subject variables. ```ItemId```, for example, represents the set of strings ```x``` such that ```ItemId(x)``` is true. Predicates may take several strings: the sort of ```CardId``` lists its two string arguments, followed by a ```|``` and the propositions that must be known to hold wherever ```CardId``` is applied. So ```CardId(cust, card)``` is only meaningful when ```cust``` is known to be a customer. 
 
-Near the bottom, the field ```items``` is given type ```{ [x : str] (ItemId x) : { name : str, description : str } }```. This is a dictionary type, but unlike a typical dictionary type, its key set is not an arbitrary set of strings; instead, it is the set of all strings that satisfy the ```ItemId``` predicate.
+Near the bottom, the field ```items``` is given type ```{ [x : str] ItemId(x) : { name : str, description : str } }```. This is a dictionary type, but unlike a typical dictionary type, its key set is not an arbitrary set of strings; instead, it is the set of all strings that satisfy the ```ItemId``` predicate.
 
 Saving the above schema in a file called "ECommerce.st" and then executing the command "dotnet run ECommerce.st" will generate an ugly chunk of MUMPS code under a tag called *validate*. This tag can be used to semi- validate that a database conforms to a schema. For example, we could paste validate in a routine containing the following code:
 

@@ -1,23 +1,8 @@
-﻿module Syntax
+﻿module Core.Syntax
 
 open FSharp.Text.Lexing
 type Range=Position*Position
 open Utils
-
-let freshVar (freeVars : Set<string>) (seed : string) : string =
-    let seedStr, seedInt = 
-        match Seq.tryFindIndex System.Char.IsDigit seed with
-        | Some n ->
-            (seed.Substring(0,n), System.Int32.Parse(seed.Substring(n)))
-        | None ->
-            (seed, 0)
-    let rec getSuffix (seedStr : string) (candidate : int) : int =
-        match freeVars.Contains (seedStr + candidate.ToString()) with
-        | true ->
-            getSuffix seedStr (candidate + 1)
-        | false ->
-            candidate
-    seedStr + (getSuffix seedStr seedInt).ToString()
 
 type Sort =
     | StString of Range
@@ -382,119 +367,6 @@ and Kind =
                 rng
                 
 
-type DecisionProcedureKey =
-    /// We must use the string denoted by the variable varName at this position
-    | ArgumentKey of varName : string
-    /// we must use the string lit as the key at this position
-    | LiteralKey of lit : string
-    /// this is the refinement variable; we must use the value @loc here
-    | Refinement
-
-    with
-
-        member this.String =
-            match this with
-            | ArgumentKey(varName) ->
-                varName
-            | LiteralKey(lit) ->
-                "\"" + lit + "\""
-                 
-type DecisionProcedure = {
-    /// names of string variables that this decision procedure abstracts over
-    vars : Set<string>
-
-    // set of proofs we are deciding
-    proofs : Set<Index>
-
-    // the sequence of lookups needed to decide the set of proofs
-    keys : List<DecisionProcedureKey>
-}
-
 type KindContext = Map<string, Kind>
 
 type SortContext = List<string * Sort>
-
-and Satellite =
-    /// all of the information necessary to create a decision procedure for a predicate in context
-    | DecisionProcedure of CanonicalSortContext
-    /// we require a decision procedure for this predicate before the variable this satellite is attached to goes out of scope
-    | DecisionProcedureRequirement of CanonicalSortContext
-
-and CanonicalSortContext = {
-    // ------- Left segment of context -------
-
-    /// List of context entries bound to StString and StStringLit sorts
-    // to simplify, all strings are physical. I'm not sure if non-physical strings are useful.
-    // we can just normalize before running the validation generator
-    strings : List<string * Sort>
-
-    /// Props - it's not clear why we would have props in our context
-    props : Set<string>
-
-    // ------- Middle segment of context -------
-    
-    /// Bindings with function sorts
-    //predicates : List<string * Sort * Set<Satellite>>
-    predicates : List<string * Sort>
-
-    // ------- Right segment of context -------
- 
-    /// Set of propositions that our context contains proofs of
-    // invariant: these all map the FlatApp active pattern
-    proofs : Set<Index>
-}
-
-    with
-        member this.String =
-            let strings' = List.filter (fun (x,st) -> x <> "" && x.[0] <> '_') this.strings
-            let stringsStr = String.concat " , " <| List.map (fun (x,st : Sort) -> sprintf "%s : %s" x st.String) strings'
-            let predsStr = String.concat " , " <| List.map (fun (x,st : Sort) -> sprintf "%s : %s" x st.String) this.predicates
-            sprintf "strings: %s\npredicates: %s\nproofs: %s" stringsStr predsStr this.StringProofs
-               
-        member this.StringProofs =
-            String.concat "," (Seq.map (fun (ind : Index) -> ind.String) 
-                              (Set.toSeq this.proofs))
-
-        static member empty : CanonicalSortContext =
-            { 
-                strings = []
-                props = Set.empty
-                predicates = []
-                proofs = Set.empty
-            }
-
-
-type DecisionSite = {
-    sctxt : CanonicalSortContext
-    selfVar : string
-    selfSort : Sort
-    formulaToDecide : Index
-}
-    with
-        member this.String =
-            sprintf "%s\nselfVar: %s\nselfSort: %s\nformulaToDecide: %s" this.sctxt.String this.selfVar this.selfSort.String this.formulaToDecide.String
-
-
-// to match proposition-in-contexts (one is a template, the other is a concrete proposition-in-context):
-//   Convert template to canonical form, where:
-//     - all variables bound to propositions have been moved to the right end of the context
-//     - irrelevant bindings (those that don't affect the proposition directly or transitively) have been removed
-//     - template is paired with a left-to-right list of lookups, including its own variables and also literal string lookups
-//
-//   We also need a matching procedure:
-//     - assigns concrete string variables to template string variables  
-
-type DecisionTemplate = {
-
-    /// we can decide any of these propositions if we assume all others
-    propSet : Set<Index>
-
-    /// a context containing all variables as predicates occuring in the propSet
-    args : SortContext
-
-}
-
-type AppClassifier =
-    | IndToTy
-    | TyToTy
-

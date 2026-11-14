@@ -1,8 +1,8 @@
 ﻿module CodeGen
 
 open Utils
-open Syntax
-open Eval
+open Surface.Syntax
+open Surface.Eval
 open DecisionProcedures
 open MCode
 open GenComputation
@@ -17,8 +17,9 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
     assert ty.IsNormalized(sctxt)
     match ty with
     | TyDict(keyVarName, keySort, domTy, rng) ->
+        let keyVarName, domTy = enterTy sctxt keyVarName domTy
         gen {
-            let sctxt' = (keyVarName, keySort) :: sctxt
+            let sctxt' = (keyVarName, StStr(keySort, noRange)) :: sctxt
             let! assertBody, isBodyPopulated = genCode sctxt' domTy
             return MBlock [
                 MLine <| sprintf "n %s" keyVarName
@@ -36,7 +37,7 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
         let foldField ((assertions, prevPopulated) : List<MCode> * bool) 
                       ((nm,ty) : string * Ty) : Gen<List<MCode> * bool> =
             gen {
-                let sctxt' = ("_", StStringLit(nm, noRange)) :: sctxt
+                let sctxt' = ("_", StStr(SsLit(nm), noRange)) :: sctxt
                 let! assertBody, isBodyPopulated = genCode sctxt' ty
                 let fieldAssertion = [
                     MLine <| sprintf "s loc=$na(@loc@(\"%s\")),level=level+1" nm
@@ -54,7 +55,7 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
         let foldField ((assertions, prevPopulated) : List<MCode> * bool) 
                       ((nm,ty) : string * Ty) : Gen<List<MCode> * bool> =
             gen {
-                let sctxt' = ("_", StStringLit(nm, noRange)) :: sctxt
+                let sctxt' = ("_", StStr(SsLit(nm), noRange)) :: sctxt
                 let! assertBody, isBodyPopulated = genCode sctxt' ty
                 let fieldAssertion = [
                     MLine <| sprintf "s loc=$na(^%s),level=level+1" nm
@@ -68,7 +69,7 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
             let! assertions,allPopulated = foldM ([], true) foldField fields
             return (MBlock (MLine "n loc,level" :: MLine "s level=-1" :: assertions), allPopulated)
         }
-    | TyStringRef(selfVarName, boundSort, IndTrue(_), _) ->
+    | TyStringRef(selfVarName, boundSort, FmTrue, _) ->
         gen {
             let canCtxt = canonicalize sctxt 
             let canCtxt' = { 
@@ -78,7 +79,8 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
             //// todo: add assertion for bound sort
             return (MBlock [MLine "i 0  w \"skip\""], true)
         }
-    | TyStringRef(selfVarName, boundSort, formula, _) ->
+    | TyStringRef(selfVarName, boundSort, FmApp(formula), _) ->
+        let selfVarName, formula = enterPredApp sctxt selfVarName formula
         gen {
             let canCtxt = canonicalize sctxt 
             let site = { 
@@ -95,6 +97,7 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
     | TyTyAbs(_, _, _, _) ->
         failwith "impossible if type is normalized and is proper type"
     | TyUnion(TyIndAbs(varName, domSort, codTy, _) as abs, _) ->
+        let varName, codTy = enterTy sctxt varName codTy
         System.Console.WriteLine("joining " + varName)
         gen {
             let sctxt' = (varName, domSort) :: sctxt
@@ -107,7 +110,7 @@ let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
                     pass
             let! assertBody' =
                 match domSort with
-                | StFun(_, _, _, _) ->
+                | StPred(_, _) ->
                     let subProd (code : MCode) 
                                 ((i, reqCtxt, optKeys) : int * DecisionSite * Option<List<DecisionProcedureKey>>) : Gen<MCode> =
                         match optKeys with

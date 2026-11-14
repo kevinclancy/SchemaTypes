@@ -1,7 +1,7 @@
 ﻿module GenComputation
 
 open FSharp.Text.Lexing
-open Syntax
+open Surface.Syntax
 open MCode
 open DecisionProcedures
 
@@ -79,12 +79,8 @@ let addSupplier (sctxt : CanonicalSortContext) (s : GenState) : Outcome<unit> =
 /// returns them in the result as (requirements, suppliers)
 let removePred (predName : string) (s : GenState) : Outcome< Set<int * DecisionSite> * Set<CanonicalSortContext> > =
 
-    let appliesPred (ind : Index) =
-        match ind with
-        | FlatApp(func, args) when func = predName ->
-            true
-        | _ ->
-            false
+    let appliesPred (app : PredApp) =
+        app.pred = predName
 
     let foldReq ((take, leave) : Set<int * DecisionSite> * Set<int * DecisionSite>) 
                 ((i, decisionSite) : int * DecisionSite) =

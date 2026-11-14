@@ -1,247 +1,199 @@
 ﻿module DecisionProcedures
 
-open Syntax
-open SortCheck
-open CheckComputation
+open Surface.Syntax
 
-let (|FlatApp|_|) (ind : Index) : Option<string * List<string>> =
-    
-    let rec (|FlatAppAux|_|) (ind : Index) : Option<string * List<string>> =
-        match ind with
-        | IndApp(fn, IndVar(arg,_), _) ->
-            match fn with
-            | FlatAppAux (predName, args) ->
-                Some (predName, arg :: args)
-            | _ ->
-                None
-        | IndVar(predName, _) ->
-            Some (predName, [])
-        | _ ->
-            None
-
-    match ind with
-    | FlatAppAux (predName, args) ->
-        Some (predName, List.rev args)
-    | _ ->
-        None
-
-/// converts a Sort Context into an equivalent canonical sort context
+/// Converts a sort context into an equivalent canonical sort context, which lists the context's
+/// predicates, strings, and proofs in separate sections.
 let canonicalize (ctxt : SortContext) : CanonicalSortContext =
-    let rec makeVarsUnique (ctxt : SortContext) : SortContext =
-        let rec makeVarsUniqueAux (ctxt : SortContext) (visitedVars : Set<string>) : SortContext =
-            match ctxt with
-            | (varName, st) :: rest when visitedVars.Contains varName ->
-                let varName' = varName + "'"
-                let rest' = List.map (fun (x, st : Sort) -> (x, st.subst(IndVar(varName', noRange), varName))) rest
-                (varName', st) :: makeVarsUniqueAux rest' (visitedVars.Add(varName'))
-            | (varName, st) :: rest ->
-                (varName, st) :: makeVarsUniqueAux rest (visitedVars.Add(varName))
-            | [] ->
-                []
-        List.rev (makeVarsUniqueAux (List.rev ctxt) Set.empty)
-
-    let rec canonicalizeAux (ctxt : SortContext) 
+    let rec canonicalizeAux (ctxt : SortContext)
                             (result : CanonicalSortContext) : CanonicalSortContext =
         match ctxt with
-        | (varName, (StString(_) as srt)) :: rest
-        | (varName, (StStringLit(_) as srt)) :: rest ->
+        | (varName, StStr(srt, _)) :: rest ->
             canonicalizeAux rest { result with strings = (varName, srt) :: result.strings }
-        | (varName, StProp(_)) :: rest ->
-            canonicalizeAux rest { result with props = result.props.Add varName }
-        | (varName, (StFun(_, _, _, _) as srt)) :: rest ->
-            canonicalizeAux rest { result with predicates = (varName, srt) :: result.predicates }
-        | (_, StProof(ind, rng)) :: rest ->
-            let result' = 
-                match ind with
-                | IndTrue(_) ->
+        | (varName, StPred(predSig, _)) :: rest ->
+            canonicalizeAux rest { result with predicates = (varName, predSig) :: result.predicates }
+        | (_, StProof(formula, _)) :: rest ->
+            let result' =
+                match formula with
+                | FmTrue ->
                     result
-                | _ ->
-                    { result with proofs = result.proofs.Add ind }
+                | FmApp(app) ->
+                    { result with proofs = result.proofs.Add app }
             canonicalizeAux rest result'
         | [] ->
             result
-    canonicalizeAux (makeVarsUnique ctxt) CanonicalSortContext.empty
-
-type FlatApp = {
-    /// name of the predicate
-    predicate : string 
-
-    /// arguments to flat predicate
-    args : List<string>
-}
-    with
-        static member ofIndex (ind : Index) =
-            match ind with
-            | FlatApp(predicate, args) ->
-                { predicate = predicate ; args = args }
-            | _ ->
-                failwith "index is not a flat application"
+    canonicalizeAux ctxt CanonicalSortContext.empty
 
 type SubstitutionStatus =
     | Substituted
     | NotSubstituted
 
-type FlatAppTarget = {
+/// A predicate application of a decision procedure, which we are trying to match
+/// against the predicate applications that are proven at a validation site
+type PredAppTarget = {
     /// name of the predicate
-    predicate : string 
+    predicate : string
 
-    /// First component - name of argument
-    /// Second component - true if the argument originated from decision procedure, 
-    ///                    false if it originated from the validation site
-    args : List<string * SubstitutionStatus>
+    /// First component - the argument
+    /// Second component - NotSubstituted if the argument is a string variable of the decision procedure,
+    ///                    Substituted if it has been replaced with an argument from the validation site.
+    ///                    String literals mean the same thing on both sides, so they count as Substituted.
+    args : List<Atom * SubstitutionStatus>
 }
     with
-        member this.subst(p : Map<string, string>) =
-            let mapArg ((varName, status) : string * SubstitutionStatus) : string * SubstitutionStatus =
-                match (p.ContainsKey varName, status) with
-                | (true, NotSubstituted) ->
+        member this.subst(p : Map<string, Atom>) =
+            let mapArg ((arg, status) : Atom * SubstitutionStatus) : Atom * SubstitutionStatus =
+                match (arg, status) with
+                | (AtomVar(varName), NotSubstituted) when p.ContainsKey varName ->
                     (p.[varName], Substituted)
                 | _ ->
-                    (varName, status)
-                
+                    (arg, status)
+
             { this with predicate = this.predicate ; args = List.map mapArg this.args }
 
-        static member ofIndex (ind : Index) =
-            match ind with
-            | FlatApp(predicate, args) ->
-                { predicate = predicate ; args = List.map (fun x -> (x, NotSubstituted)) args }
-            | _ ->
-                failwith "index is not a flat application"
+        static member ofPredApp (app : PredApp) =
+            let ofArg (arg : Atom) : Atom * SubstitutionStatus =
+                match arg with
+                | AtomVar(_) ->
+                    (arg, NotSubstituted)
+                | AtomLit(_) ->
+                    (arg, Substituted)
+
+            { predicate = app.pred ; args = List.map ofArg app.args }
 
 
 /// the state of the algorithm that instantiates decision procedures
 type InstantiationState = {
-    substitutions : Map<string, string>
-    proofs : Set<FlatAppTarget>
+    substitutions : Map<string, Atom>
+    proofs : Set<PredAppTarget>
 }
     with
         static member ofSortContext (ctxt : CanonicalSortContext) =
-            { substitutions = Map.empty ; proofs = Set.map FlatAppTarget.ofIndex ctxt.proofs }
+            { substitutions = Map.empty ; proofs = Set.map PredAppTarget.ofPredApp ctxt.proofs }
 
-let appMatches (source : FlatApp) (target : FlatAppTarget) =
-    
-    /// sourceArg - the name of the variable we are trying to use as an instantiator
-    /// targetArg - first component is variable name, second component true iff it has already been instantiated
-    let argMatches (sourceArg : string) (targetArg : string * SubstitutionStatus) = 
+let appMatches (source : PredApp) (target : PredAppTarget) =
+
+    /// sourceArg - the argument we are trying to use as an instantiator
+    /// targetArg - first component is the argument, second component tells whether it has already been instantiated
+    let argMatches (sourceArg : Atom) (targetArg : Atom * SubstitutionStatus) =
         match targetArg with
         | (_, NotSubstituted) ->
             true
-        | (varName, Substituted) when varName = sourceArg ->
+        | (arg, Substituted) when arg = sourceArg ->
             true
         | _ ->
             false
 
-    source.predicate = target.predicate && List.forall2 argMatches source.args target.args 
+    source.pred = target.predicate
+    && source.args.Length = target.args.Length
+    && List.forall2 argMatches source.args target.args
 
-let getSubstitutions (subst : Map<string, string>) (source : FlatApp) (target : FlatAppTarget) : Map<string, string> =
-    let accSubst (substitutions : Map<string, string>) (sourceArg : string) (targetArg : string * SubstitutionStatus) =
+let getSubstitutions (subst : Map<string, Atom>) (source : PredApp) (target : PredAppTarget) : Map<string, Atom> =
+    let accSubst (substitutions : Map<string, Atom>) (sourceArg : Atom) (targetArg : Atom * SubstitutionStatus) =
         match targetArg with
-        | (targetArgName, Substituted) ->
-            substitutions
-        | (targetArgName, NotSubstituted) ->
+        | (AtomVar(targetArgName), NotSubstituted) ->
             substitutions.Add(targetArgName, sourceArg)
+        | _ ->
+            substitutions
 
     List.fold2 accSubst subst source.args target.args
 
+/// Finds a substitution of the site's arguments for the decision procedure's string variables under which
+/// each of the decision procedure's proofs is one of siteProofs
+let rec private instantiateAux (siteProofs : Set<PredApp>) (state : InstantiationState) : Option<Map<string, Atom>> =
+
+    System.Console.WriteLine(state.substitutions)
+
+    match Set.isEmpty state.proofs with
+    | true ->
+        Some <| state.substitutions
+    | false ->
+        let targetApp = state.proofs.MinimumElement
+        let candidates = Set.filter (fun x -> appMatches x targetApp) siteProofs
+        let tryCandidate(candidate : PredApp) : Option<Map<string,Atom>> =
+            let substitutions' = getSubstitutions state.substitutions candidate targetApp
+            let proofs' = Set.map (fun (x : PredAppTarget) -> x.subst substitutions') <| state.proofs.Remove targetApp
+            instantiateAux siteProofs { substitutions = substitutions' ; proofs = proofs' }
+
+        Seq.tryPick tryCandidate (Set.toSeq candidates)
+
+/// The lookups that decide the decision procedure's proofs, as instantiated by substitution.
+/// selfVar is the site's refinement variable, if it has one.
+/// Returns None if one of the decision procedure's strings has not been instantiated: none of its proofs
+/// mention that string, so we don't know which key to look up in its position.
+let private instantiateKeys (decisionProcedure : CanonicalSortContext)
+                            (substitution : Map<string, Atom>)
+                            (selfVar : Option<string>) : Option<List<DecisionProcedureKey>> =
+    let mapStringVar ((name, sort) : string * StrSort) : Option<DecisionProcedureKey> =
+        match sort with
+        | SsString ->
+            match substitution.TryFind name with
+            | Some(AtomVar(varName)) when Some varName = selfVar ->
+                Some <| ArgumentKey("@loc")
+            | Some(AtomVar(varName)) ->
+                Some <| ArgumentKey(varName)
+            | Some(AtomLit(str)) ->
+                Some <| LiteralKey(str)
+            | None ->
+                None
+        | SsLit(str) ->
+            Some <| LiteralKey(str)
+
+    let keys = List.map mapStringVar decisionProcedure.strings
+    match List.forall Option.isSome keys with
+    | true ->
+        Some <| List.map Option.get keys
+    | false ->
+        None
+
 /// Instantiates a decision procedure using the site context, or reports None if impossible
 let instantiate (siteContext : CanonicalSortContext) (decisionProcedure : CanonicalSortContext) : Option<List<DecisionProcedureKey>> =
-    
-    let siteProofs = Set.map FlatApp.ofIndex siteContext.proofs
 
     System.Console.WriteLine("***")
     System.Console.WriteLine("site context: " + siteContext.String + "\n\nDecision procedure: " + decisionProcedure.String + "\n")
 
-    let rec instantiateAux (state : InstantiationState) : Option<Map<string, string>> =
-        match Set.isEmpty state.proofs with
-        | true ->
-            Some <| state.substitutions
-        | false ->
-            let targetApp = state.proofs.MinimumElement
-            let candidates = Set.filter (fun x -> appMatches x targetApp) siteProofs
-            let tryCandidate(candidate : FlatApp) : Option<Map<string,string>> =
-                let substitutions' = getSubstitutions state.substitutions candidate targetApp
-                let proofs' = Set.map (fun (x : FlatAppTarget) -> x.subst substitutions') <| state.proofs.Remove targetApp                
-                instantiateAux { substitutions = substitutions' ; proofs = proofs' }
+    let keys =
+        instantiateAux siteContext.proofs (InstantiationState.ofSortContext decisionProcedure)
+        |> Option.bind (fun substitution -> instantiateKeys decisionProcedure substitution None)
 
-            Seq.tryPick tryCandidate (Set.toSeq candidates) 
-    
-    match instantiateAux (InstantiationState.ofSortContext decisionProcedure) with
-    | Some substitution ->
-        let mapStringVar ((name, sort) : string * Sort) =
-            match sort with
-            | StString(_) ->
-                ArgumentKey(substitution.[name])
-            | StStringLit(str, _) ->
-                LiteralKey(str)
-            | _ ->
-                failwith "unreachable"
-
+    match keys with
+    | Some _ ->
         System.Console.WriteLine("instantiation succeeded")
         System.Console.WriteLine("***")
         // substitute into siteContext.strings - there is no longer a need for the "wildcard" decision procedure key type
-        Some <| List.map mapStringVar decisionProcedure.strings
+        keys
     | None ->
         System.Console.WriteLine("instaniation failed")
         System.Console.WriteLine("***")
         None
-    
+
 /// Instantiates a decision procedure using the site context, or reports None if impossible
 let instantiate2 (siteContext : DecisionSite) (decisionProcedure : CanonicalSortContext) : Option<List<DecisionProcedureKey>> =
-    
-    let siteProofs = Set.map FlatApp.ofIndex (Set.add siteContext.formulaToDecide siteContext.sctxt.proofs)
+
+    let siteProofs = Set.add siteContext.formulaToDecide siteContext.sctxt.proofs
 
     System.Console.WriteLine("***")
     System.Console.WriteLine("site context: " + siteContext.String + "\n\nDecision procedure: " + decisionProcedure.String + "\n")
 
-    let rec instantiateAux (state : InstantiationState) : Option<Map<string, string>> =
-        
-        System.Console.WriteLine(state.substitutions)
-
-        match Set.isEmpty state.proofs with
-        | true ->
-            Some <| state.substitutions
-        | false ->
-            let targetApp = state.proofs.MinimumElement
-            let candidates = Set.filter (fun x -> appMatches x targetApp) siteProofs
-            let tryCandidate(candidate : FlatApp) : Option<Map<string,string>> =
-                let substitutions' = getSubstitutions state.substitutions candidate targetApp
-                let proofs' = Set.map (fun (x : FlatAppTarget) -> x.subst substitutions') <| state.proofs.Remove targetApp                
-                instantiateAux { substitutions = substitutions' ; proofs = proofs' }
-
-            Seq.tryPick tryCandidate (Set.toSeq candidates) 
-
     // if dp doesn't contain formula matching the one to decide, instantiation fails
-    let predMatches (i : Index) (j : Index) =
-        match i,j with
-        | FlatApp(pred0, _), FlatApp(pred1, _) when pred0 = pred1 ->
-            true
-        | _ ->
-            false
+    let predMatches (i : PredApp) (j : PredApp) =
+        i.pred = j.pred
 
-    match List.exists (predMatches siteContext.formulaToDecide) (Set.toList decisionProcedure.proofs) with
-    | true ->
-        match instantiateAux (InstantiationState.ofSortContext decisionProcedure) with
-        | Some substitution ->
-            let mapStringVar ((name, sort) : string * Sort) =
-                match sort with
-                | StString(_) when substitution.[name] = siteContext.selfVar ->
-                    ArgumentKey("@loc")
-                | StString(_) ->
-                    ArgumentKey(substitution.[name])
-                | StStringLit(str, _) ->
-                    LiteralKey(str)
-                | _ ->
-                    failwith "unreachable"
+    let keys =
+        match Set.exists (predMatches siteContext.formulaToDecide) decisionProcedure.proofs with
+        | true ->
+            instantiateAux siteProofs (InstantiationState.ofSortContext decisionProcedure)
+            |> Option.bind (fun substitution -> instantiateKeys decisionProcedure substitution (Some siteContext.selfVar))
+        | false ->
+            None
 
-            System.Console.WriteLine("instantiation succeeded")
-            System.Console.WriteLine("***")
-            // substitute into siteContext.strings - there is no longer a need for the "wildcard" decision procedure key type
-            Some <| List.map mapStringVar decisionProcedure.strings
-        | None ->
-            System.Console.WriteLine("instaniation failed")
-            System.Console.WriteLine("***")
-            None        
-    | _ ->
+    match keys with
+    | Some _ ->
+        System.Console.WriteLine("instantiation succeeded")
+        System.Console.WriteLine("***")
+        // substitute into siteContext.strings - there is no longer a need for the "wildcard" decision procedure key type
+        keys
+    | None ->
         System.Console.WriteLine("instaniation failed")
         System.Console.WriteLine("***")
         None

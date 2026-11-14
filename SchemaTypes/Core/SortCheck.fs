@@ -1,7 +1,7 @@
-﻿module SortCheck
+﻿module Core.SortCheck
 
 open CheckComputation
-open Syntax
+open Core.Syntax
 
 let rec applyProofs (ctxt : SortContext) (sort : Sort) (rng : Range) : Check<Sort> =
     match sort with

@@ -1,70 +1,71 @@
-﻿module KindCheck
+module Surface.KindCheck
 
-open Syntax
-open SortCheck
+open Surface.Syntax
+open Surface.SortCheck
 open CheckComputation
 
 let rec applyProofs (ctxt : SortContext) (kind : Kind) (rng : Range) : Check<Kind> =
     match kind with
-    | KIndFun(varName, StProof(ind,_), cod, _) ->
-        let provesInd (a : string, q : Sort) =
-            match q with
-            | StProof(j, _) when ind.IndexEquals(j) ->
-                true
-            | _ ->
-                false
-        match List.tryFind provesInd ctxt with
-        | Some(a, StProof(j, _)) ->
-            applyProofs ctxt (cod.subst(IndVar(a,noRange), varName)) rng    
-        | Some(_,_) ->
-            failwith "impossible"
-        | None ->
-            Error [("Proof of " + ind.String + " not in context.", rng)]
+    | KIndFun(_, StProof(formula,_), cod, _) ->
+        match proves ctxt formula with
+        | true ->
+            // proofs are irrelevant, so there is nothing to substitute into the codomain
+            applyProofs ctxt cod rng
+        | false ->
+            Error [("Proof of " + formula.String + " not in context.", rng)]
     | _ ->
         Result kind
 
-let rec subSort (sctxt : SortContext) (s1 : Sort) (s2 : Sort) = 
-    match (s1, s2) with
-    | (StString(_), StString(_))
-    | (StStringLit(_,_), StString(_)) ->
-        true
-    | (StStringLit(x1,_),StStringLit(x2,_)) when x1 = x2 ->
-        true
-    | (StProp(_), StProp(_)) ->
-        true
-    | (StProof(ind1,_), StProof(ind2,_)) ->
+/// p1 is a subsignature of p2 if a predicate with signature p1 can be used wherever one with
+/// signature p2 is expected: it accepts at least the same strings, and requires the same proofs.
+let subPredSig (p1 : PredSig) (p2 : PredSig) : bool =
+    match p1.strings.Length = p2.strings.Length with
+    | false ->
         false
-    | (StFun(varName1, domSort1, codSort1, _), StFun(varName2, domSort2, codSort2, _)) ->
-        let domSub = subSort sctxt domSort2 domSort1
-        let sctxt' = (varName2, domSort2) :: sctxt 
-        let codSub = subSort sctxt' (codSort1.subst(IndVar(varName2, noRange), varName1)) codSort2
-        domSub && codSub
+    | true ->
+        let stringsSub = List.forall2 (fun (_, st1) (_, st2) -> subStrSort st2 st1) p1.strings p2.strings
+        // compare the proof sections under a common choice of names for the string formals
+        let formals = List.map AtomVar <| freshVars (Set.union p1.freeVars p2.freeVars) p2.formalNames
+        let proofsEqual = (Set.ofList <| p1.instantiate formals) = (Set.ofList <| p2.instantiate formals)
+        stringsSub && proofsEqual
+
+let subSort (s1 : Sort) (s2 : Sort) : bool =
+    match (s1, s2) with
+    | (StStr(strSort1,_), StStr(strSort2,_)) ->
+        subStrSort strSort1 strSort2
+    | (StProof(formula1,_), StProof(formula2,_)) ->
+        formula1 = formula2
+    | (StPred(predSig1,_), StPred(predSig2,_)) ->
+        subPredSig predSig1 predSig2
     | _ ->
         false
 
-let checkSubSort (sctxt : SortContext) (s1 : Sort) (s2 : Sort) : Check<Unit> =
-    match subSort sctxt s1 s2 with
+let checkSubSort (s1 : Sort) (s2 : Sort) : Check<Unit> =
+    match subSort s1 s2 with
     | true ->
         Result ()
     | false ->
         Error []
 
-let rec subKind (sctxt : SortContext) (k1 : Kind) (k2 : Kind) : bool =
+let rec subKind (k1 : Kind) (k2 : Kind) : bool =
     match (k1, k2) with
     | (KProper(_), KProper(_)) ->
         true
     | (KProperPopulated(_), KProper(_)) ->
         true
+    | (KProperPopulated(_), KProperPopulated(_)) ->
+        true
     | (KTyFun(dom1,cod1,_), KTyFun(dom2,cod2,_)) ->
-        (subKind sctxt dom2 dom1) && (subKind sctxt cod1 cod2)
+        (subKind dom2 dom1) && (subKind cod1 cod2)
     | (KIndFun(var1, dom1,cod1,_), KIndFun(var2, dom2, cod2,_)) ->
-        let sctxt' = (var2, dom2) :: sctxt
-        (subSort sctxt dom2 dom1) && (subKind sctxt' cod1 cod2)
+        // compare the codomains under a common name for the bound variable
+        let var = Utils.freshVar (Set.union cod1.freeIndVars cod2.freeIndVars) var2
+        (subSort dom2 dom1) && (subKind (cod1.rename(var1, var)) (cod2.rename(var2, var)))
     | _ ->
         false
 
-let checkSubKind (sctxt : SortContext) (k1 : Kind) (k2 : Kind) : Check<unit> =
-    match subKind sctxt k1 k2 with
+let checkSubKind (k1 : Kind) (k2 : Kind) : Check<unit> =
+    match subKind k1 k2 with
     | true ->
         Result ()
     | false ->
@@ -81,6 +82,7 @@ let rec wfKind (sctxt : SortContext) (k : Kind) : Check<unit> =
             do! wfKind sctxt cod
         }
     | KIndFun(varName, dom, cod, _) ->
+        let varName, cod = enterKind sctxt varName cod
         check {
             do! wfSort sctxt dom
             let sctxt' = (varName, dom) :: sctxt
@@ -90,24 +92,22 @@ let rec wfKind (sctxt : SortContext) (k : Kind) : Check<unit> =
 let rec kindCheck (sctxt : SortContext) (kctxt : KindContext) (subject : Ty) (target : Kind) : Check<Kind> =
     check {
         let! kind = kindSynth sctxt kctxt subject
-        do! withError ("type " + subject.String + "'s kind " + kind.String + " is not a subkind of " + target.String)  
+        do! withError ("type " + subject.String + "'s kind " + kind.String + " is not a subkind of " + target.String)
                       subject.Range
-                      (checkSubKind sctxt kind target)
+                      (checkSubKind kind target)
         return kind
     }
 
 and kindSynth (sctxt : SortContext) (kctxt : KindContext) (ty : Ty) : Check<Kind> =
     match ty with
-    | TyDict(keyVarName, keySort, domTy, rng) -> 
+    | TyDict(keyVarName, keySort, domTy, rng) ->
+        let keyVarName, domTy = enterTy sctxt keyVarName domTy
         check {
-            do! withError "expected string sort for dictionary key" 
-                          keySort.Range 
-                          (checkSubSort sctxt keySort (StString(noRange)))
-            let sctxt' = (keyVarName, keySort) :: sctxt
+            let sctxt' = (keyVarName, StStr(keySort, noRange)) :: sctxt
             let! domKind = kindSynth sctxt' kctxt domTy
-            do! withError "expected proper kind for dictionary value" 
+            do! withError "expected proper kind for dictionary value"
                           domTy.Range
-                          (checkSubKind sctxt' domKind (KProper(noRange)))
+                          (checkSubKind domKind (KProper(noRange)))
             // we can't return KProperPopulated because we don't know if it contains any entries
             return (KProper(noRange))
         }
@@ -125,15 +125,16 @@ and kindSynth (sctxt : SortContext) (kctxt : KindContext) (ty : Ty) : Check<Kind
             return (if List.exists isPopulated allKinds then KProperPopulated(noRange) else KProper(noRange))
         }
     | TyStringRef(varName, sort, formula, rng) ->
+        let varName, formula = enterFormula sctxt varName formula
         check {
-            let sctxt' = (varName, sort) :: sctxt
-            let! indSort = sortCheckInd sctxt' formula
-            do! withError ("sort of index " + formula.String + "is not prop") 
-                          formula.Range 
-                          (checkSubSort sctxt' indSort (StProp(noRange)))
+            let sctxt' = (varName, StStr(sort, noRange)) :: sctxt
+            do! withError (formula.String + " failed to sort check.")
+                          rng
+                          (checkFormula sctxt' formula rng)
             return KProperPopulated(noRange)
         }
     | TyIndAbs(varName, domSort, codTy, rng) ->
+        let varName, codTy = enterTy sctxt varName codTy
         check {
             do! wfSort sctxt domSort
             let sctxt' = (varName, domSort) :: sctxt
@@ -150,27 +151,27 @@ and kindSynth (sctxt : SortContext) (kctxt : KindContext) (ty : Ty) : Check<Kind
     | TyUnion(indTyFun, rng) ->
         check {
             let! kFun = kindSynth sctxt kctxt indTyFun
-            do! 
+            do!
                 match kFun with
                 | KIndFun(_, _, kCod, _) ->
-                    withError "expected codomain to be a proper type" 
+                    withError "expected codomain to be a proper type"
                               kCod.Range
-                              (checkSubKind sctxt kCod (KProper(noRange)))
+                              (checkSubKind kCod (KProper(noRange)))
                 | _ ->
-                    Error [("Unions can only be taken over index abstractions, not types of kind " + kFun.String, rng)] 
+                    Error [("Unions can only be taken over index abstractions, not types of kind " + kFun.String, rng)]
             return KProper(noRange)
         }
     | TyTyApp(fn, arg, rng) ->
         check {
             let! kArg = kindSynth sctxt kctxt arg
             let! kFun = kindSynth sctxt kctxt fn
-            let! kCod = 
+            let! kCod =
                 match kFun with
-                | KTyFun(kDom, kCod, rng) ->
+                | KTyFun(kDom, kCod, _) ->
                     check {
                         do! withError ("type " + arg.String + "'s kind " + kArg.String + " is not a subkind of " + kDom.String)
                                       rng
-                                      (checkSubKind sctxt kArg kDom)
+                                      (checkSubKind kArg kDom)
                         return kCod
                     }
                 | _ ->
@@ -179,25 +180,25 @@ and kindSynth (sctxt : SortContext) (kctxt : KindContext) (ty : Ty) : Check<Kind
         }
     | TyIndApp(fn, arg, rng) ->
         check {
-            let! sArg = sortCheckInd sctxt arg
+            let! sArg = sortCheckAtom sctxt arg rng
             let! kFun = kindSynth sctxt kctxt fn
             let! kRes =
                 match kFun with
-                | KIndFun(varName, sDom, kCod, rng) ->
+                | KIndFun(varName, sDom, kCod, _) ->
                     check {
-                        do! withError ("type " + arg.String + "'s sort " + sArg.String + " is not a subsort of " + sDom.String)
+                        do! withError ("index " + arg.String + "'s sort " + sArg.String + " is not a subsort of " + sDom.String)
                                       rng
-                                      (checkSubSort sctxt sArg sDom)
+                                      (checkSubSort sArg sDom)
                         return kCod.subst(arg, varName)
                     }
                 | _ ->
                     Error [("Expected " + fn.String + " to be an index abstraction, but instead it has kind " + kFun.String, fn.Range)]
-            let! kRes' = applyProofs sctxt kRes arg.Range
+            let! kRes' = applyProofs sctxt kRes rng
             return kRes'
         }
     | TyVar(name, rng) ->
         check {
-            let! kind = 
+            let! kind =
                 match kctxt.TryFind name with
                 | Some(kind) ->
                     Result kind

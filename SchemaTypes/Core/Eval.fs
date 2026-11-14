@@ -1,6 +1,6 @@
-﻿module Eval
+﻿module Core.Eval
 
-open Syntax
+open Core.Syntax
 open Utils
 
 let rec applyProofs (sctxt : SortContext) (ty : Ty) : Ty =
