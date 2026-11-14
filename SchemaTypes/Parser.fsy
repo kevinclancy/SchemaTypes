@@ -103,7 +103,7 @@ IdBinding : ID COLON StrSort { (snd $1, $3) }
 IdList : IdBinding COMMA IdList { $1 :: $3 }
        | IdBinding { [$1] }
 
-SimpleType : LBRACK LSQUAREBRACK IdList RSQUAREBRACK GuardList COLON Type RBRACK { makeDictChain $3 (makeDictDom $5 $7) parseState.ResultRange }
+SimpleType : LBRACK LSQUAREBRACK IdList RSQUAREBRACK GuardList COLON Type RBRACK { makeDictChain $3 $5 $7 parseState.ResultRange }
      | LBRACK LSQUAREBRACK IdList RSQUAREBRACK COLON Type RBRACK { makeAnonDictChain $3 $6 parseState.ResultRange }
      | LBRACK FieldList RBRACK { TyRecord($2, parseState.ResultRange) }
      | LBRACK ID COLON StrSort PIPE Formula RBRACK { TyStringRef(snd $2, $4, $6, parseState.ResultRange) }

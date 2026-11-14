@@ -882,7 +882,7 @@ let _fsyacc_reductions ()  =    [|
                 (
                    (
 # 106 "Parser.fsy"
-                                                                                                        makeDictChain _3 (makeDictDom _5 _7) parseState.ResultRange 
+                                                                                                        makeDictChain _3 _5 _7 parseState.ResultRange 
                    )
 # 106 "Parser.fsy"
                  : 'gentype_SimpleType));

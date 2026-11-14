@@ -6,8 +6,9 @@
 /// is always applied to all of its string arguments at once, and its sort lists its string formals
 /// and the proofs it requires in two separate sections.
 ///
-/// The type level is the same as in the core language: index-to-type and type-to-type functions
-/// take one argument at a time.
+/// The type level is curried in both languages: index-to-type and type-to-type functions take one
+/// argument at a time. The one difference is that a surface dictionary carries its guards, where the
+/// core language encodes each guard as a union over the guard's proofs.
 module Surface.Syntax
 
 open FSharp.Text.Lexing
@@ -300,8 +301,21 @@ type Kind =
             | KIndFun(_,_,_,rng) ->
                 rng
 
+/// The propositions that bound the keys of a dictionary, with their source locations
+type Guards = List<Formula * Range>
+
+let private guardVars (guards : Guards) : Set<string> =
+    Set.unionMany <| List.map (fun (guard : Formula, _) -> guard.freeVars) guards
+
+/// Substitute a for x in guards
+let private substGuards (guards : Guards) (a : Atom) (x : string) : Guards =
+    List.map (fun (guard : Formula, rng) -> (guard.subst(a, x), rng)) guards
+
 type Ty =
-    | TyDict of keyVarName : string * keySort : StrSort * domTy : Ty * Range
+    /// A dictionary whose keys are the strings of sort keySort that satisfy the guards.
+    /// keyVarName is bound in the guards and in domTy. Each guard may rely on proofs of the guards
+    /// that precede it, and domTy may rely on proofs of all of them.
+    | TyDict of keyVarName : string * keySort : StrSort * guards : Guards * domTy : Ty * Range
     | TyRecord of List<string * Ty> * Range
     | TyStringRef of selfVarName : string * boundSort : StrSort * formula : Formula * Range
     | TyIndAbs of varName : string * domSort : Sort * codTy : Ty * Range
@@ -316,8 +330,8 @@ type Ty =
 
         member this.freeIndVars : Set<string> =
             match this with
-            | TyDict(keyVarName, _, domTy, _) ->
-                Set.remove keyVarName domTy.freeIndVars
+            | TyDict(keyVarName, _, guards, domTy, _) ->
+                Set.remove keyVarName (Set.union (guardVars guards) domTy.freeIndVars)
             | TyRecord(fields, _) ->
                 Set.unionMany (List.map (fun (_, ty : Ty) -> ty.freeIndVars) fields)
             | TyStringRef(selfVarName, _, formula, _) ->
@@ -339,7 +353,7 @@ type Ty =
 
         member this.freeTyVars : Set<string> =
             match this with
-            | TyDict(_, _, domTy, _) ->
+            | TyDict(_, _, _, domTy, _) ->
                 domTy.freeTyVars
             | TyRecord(fields, _) ->
                 Set.unionMany (List.map (fun (_, ty : Ty) -> ty.freeTyVars) fields)
@@ -362,18 +376,9 @@ type Ty =
 
         member this.String : string =
             match this with
-            | TyDict(keyVarName, keySort, domTy, _) ->
-                /// the propositions guarding the dictionary's keys, followed by the type of its values
-                let rec splitGuards (ty : Ty) : List<Formula> * Ty =
-                    match ty with
-                    | TyUnion(TyIndAbs(_, StProof(formula, _), codTy, _), _) ->
-                        let guards, valTy = splitGuards codTy
-                        (formula :: guards, valTy)
-                    | _ ->
-                        ([], ty)
-                let guards, valTy = splitGuards domTy
-                let guardsStr = String.concat "," <| List.map (fun (guard : Formula) -> " " + guard.String) guards
-                "{ [" + keyVarName + " : " + keySort.String + "]" + guardsStr + " : " + valTy.String + " }"
+            | TyDict(keyVarName, keySort, guards, domTy, _) ->
+                let guardsStr = String.concat "," <| List.map (fun (guard : Formula, _) -> " " + guard.String) guards
+                "{ [" + keyVarName + " : " + keySort.String + "]" + guardsStr + " : " + domTy.String + " }"
             | TyRecord(fields, _) ->
                 let fieldToString ((name, ty) : string * Ty) =
                     name + " : " + ty.String
@@ -397,7 +402,7 @@ type Ty =
                 let defsStr = String.concat " " <| List.map (fun (name, predSig : PredSig) -> name + predSig.String) defs
                 "predicates " + defsStr + " end " + scope.String
             | TyUnion(indTyFun, _) ->
-                // only predicates and dictionary guards have a concrete syntax
+                // only unions over predicates have a concrete syntax
                 "union " + indTyFun.String
             | TyTyApp(fn, arg, _) ->
                 "(" + fn.String + " !" + arg.String + ")"
@@ -420,12 +425,13 @@ type Ty =
                     boundVar
 
             match this with
-            | TyDict(keyVarName, _, _, _) when keyVarName = varName ->
+            | TyDict(keyVarName, _, _, _, _) when keyVarName = varName ->
                 this
-            | TyDict(keyVarName, keySort, domTy, rng) ->
-                let keyVarName' = avoidCapture keyVarName domTy.freeIndVars
+            | TyDict(keyVarName, keySort, guards, domTy, rng) ->
+                let keyVarName' = avoidCapture keyVarName (Set.union (guardVars guards) domTy.freeIndVars)
+                let guards' = substGuards guards (AtomVar keyVarName') keyVarName
                 let domTy' = domTy.renameInd(keyVarName, keyVarName')
-                TyDict(keyVarName', keySort, domTy'.substInd(varName, a), rng)
+                TyDict(keyVarName', keySort, substGuards guards' a varName, domTy'.substInd(varName, a), rng)
             | TyRecord(fields, rng) ->
                 TyRecord(List.map (fun (x : string, T : Ty) -> (x, T.substInd(varName, a))) fields, rng)
             | TyStringRef(selfVarName, _, _, _) when selfVarName = varName ->
@@ -488,9 +494,15 @@ type Ty =
 
             let rec subst (ty : Ty) : Ty =
                 match ty with
-                | TyDict(keyVarName, keySort, domTy, rng) ->
-                    let keyVarName', domTy' = avoidIndCapture keyVarName domTy
-                    TyDict(keyVarName', keySort, subst domTy', rng)
+                | TyDict(keyVarName, keySort, guards, domTy, rng) ->
+                    match otherIndVars.Contains keyVarName with
+                    | true ->
+                        let scopeVars = Set.union (guardVars guards) domTy.freeIndVars
+                        let keyVarName' = freshVar (Set.union otherIndVars scopeVars) keyVarName
+                        let guards' = substGuards guards (AtomVar keyVarName') keyVarName
+                        TyDict(keyVarName', keySort, guards', subst (domTy.renameInd(keyVarName, keyVarName')), rng)
+                    | false ->
+                        TyDict(keyVarName, keySort, guards, subst domTy, rng)
                 | TyRecord(fields, rng) ->
                     TyRecord(List.map (fun (name : string, fieldTy : Ty) -> (name, subst fieldTy)) fields, rng)
                 | TyStringRef(_, _, _, _) ->
@@ -523,7 +535,7 @@ type Ty =
 
         member this.Range : Range =
             match this with
-            | TyDict(_,_,_,rng)
+            | TyDict(_,_,_,_,rng)
             | TyRecord(_,rng)
             | TyStringRef(_,_,_,rng)
             | TyIndAbs(_,_,_,rng)
@@ -558,6 +570,18 @@ let private nameForBinder (sctxt : SortContext) (varName : string) (scopeVars : 
 let enterTy (sctxt : SortContext) (varName : string) (body : Ty) : string * Ty =
     let varName' = nameForBinder sctxt varName body.freeIndVars
     (varName', body.renameInd(varName, varName'))
+
+/// Like enterTy, for the key variable of a dictionary, whose scope is the dictionary's guards
+/// and the type of its values
+let enterDict (sctxt : SortContext) (keyVarName : string) (guards : Guards) (domTy : Ty) : string * Guards * Ty =
+    let keyVarName' = nameForBinder sctxt keyVarName (Set.union (guardVars guards) domTy.freeIndVars)
+    (keyVarName', substGuards guards (AtomVar keyVarName') keyVarName, domTy.renameInd(keyVarName, keyVarName'))
+
+/// The context of a dictionary's values: sctxt extended with the key and with a proof of each guard
+let dictContext (sctxt : SortContext) (keyVarName : string) (keySort : StrSort) (guards : Guards) : SortContext =
+    List.fold (fun sctxt' (guard, rng) -> ("_", StProof(guard, rng)) :: sctxt')
+              ((keyVarName, StStr(keySort, noRange)) :: sctxt)
+              guards
 
 /// Like enterTy, for a binder whose scope is a kind
 let enterKind (sctxt : SortContext) (varName : string) (body : Kind) : string * Kind =

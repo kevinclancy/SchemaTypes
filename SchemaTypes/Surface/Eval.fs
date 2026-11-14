@@ -13,10 +13,10 @@ let rec applyProofs (sctxt : SortContext) (ty : Ty) : Ty =
 
 let rec step (sctxt : SortContext) (ty : Ty) : Option<Ty> =
     match ty with
-    | TyDict(keyVarName, keySort, domTy, rng) ->
-        let keyVarName, domTy = enterTy sctxt keyVarName domTy
-        let sctxt' = (keyVarName, StStr(keySort, noRange)) :: sctxt
-        Option.map (fun domTy' -> TyDict(keyVarName, keySort, domTy', rng))
+    | TyDict(keyVarName, keySort, guards, domTy, rng) ->
+        let keyVarName, guards, domTy = enterDict sctxt keyVarName guards domTy
+        let sctxt' = dictContext sctxt keyVarName keySort guards
+        Option.map (fun domTy' -> TyDict(keyVarName, keySort, guards, domTy', rng))
                    (step sctxt' domTy)
     | TyRecord(fields, rng) ->
         let sctxtWithStr (x : string) =

@@ -16,11 +16,18 @@ type GenContext = {
 let rec genCode (sctxt : SortContext) (ty : Ty) : Gen<MCode * bool> =
     assert ty.IsNormalized(sctxt)
     match ty with
-    | TyDict(keyVarName, keySort, domTy, rng) ->
-        let keyVarName, domTy = enterTy sctxt keyVarName domTy
+    | TyDict(keyVarName, keySort, guards, domTy, rng) ->
+        let keyVarName, guards, domTy = enterDict sctxt keyVarName guards domTy
         gen {
-            let sctxt' = (keyVarName, StStr(keySort, noRange)) :: sctxt
+            let sctxt' = dictContext sctxt keyVarName keySort guards
             let! assertBody, isBodyPopulated = genCode sctxt' domTy
+            // a guarded dictionary whose values are populated decides its guards
+            do!
+                match isBodyPopulated && not guards.IsEmpty with
+                | true ->
+                    addSupplier (canonicalize sctxt')
+                | false ->
+                    pass
             return MBlock [
                 MLine <| sprintf "n %s" keyVarName
                 MLine <| sprintf "s %s=\"\"" keyVarName

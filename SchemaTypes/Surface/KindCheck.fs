@@ -100,10 +100,16 @@ let rec kindCheck (sctxt : SortContext) (kctxt : KindContext) (subject : Ty) (ta
 
 and kindSynth (sctxt : SortContext) (kctxt : KindContext) (ty : Ty) : Check<Kind> =
     match ty with
-    | TyDict(keyVarName, keySort, domTy, rng) ->
-        let keyVarName, domTy = enterTy sctxt keyVarName domTy
+    | TyDict(keyVarName, keySort, guards, domTy, rng) ->
+        let keyVarName, guards, domTy = enterDict sctxt keyVarName guards domTy
+        /// each guard may rely on proofs of the guards that precede it
+        let checkGuard (sctxt' : SortContext) ((guard, guardRng) : Formula * Range) : Check<SortContext> =
+            check {
+                do! withError (guard.String + " failed to sort check.") guardRng <| checkFormula sctxt' guard guardRng
+                return ("_", StProof(guard, guardRng)) :: sctxt'
+            }
         check {
-            let sctxt' = (keyVarName, StStr(keySort, noRange)) :: sctxt
+            let! sctxt' = foldM ((keyVarName, StStr(keySort, noRange)) :: sctxt) checkGuard guards
             let! domKind = kindSynth sctxt' kctxt domTy
             do! withError "expected proper kind for dictionary value"
                           domTy.Range

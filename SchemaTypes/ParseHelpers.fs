@@ -15,34 +15,24 @@ let makePredSig (strings : List<string * StrSort>) (proofs : List<PredApp>) : Pr
 let makePredicates (defs : List<string * Sort>) (body : Ty) (rng : Range) : Ty =
     List.foldBack (fun (name, sort) scope -> TyUnion(TyIndAbs(name, sort, scope, rng), rng)) defs body
 
-let rec makeDictDom (guards : List<Formula * Range>) (domTy : Ty) =
-    match guards with
-    | (formula, rng) :: rest ->
-        TyUnion(TyIndAbs("***", StProof(formula, rng), makeDictDom rest domTy , noRange), noRange)
-    | [] ->
-        domTy
-
-let rec makeDictChain (domSorts : List<string * StrSort>) (codTy : Ty) (rng : Range) =
-    match domSorts with
-    | (varName, sort) :: restCods ->
-        TyDict(varName, sort, makeDictChain restCods codTy rng, rng)
+/// A chain of dictionaries, one for each key. The guards may mention every key, so they belong to
+/// the innermost dictionary.
+let rec makeDictChain (keys : List<string * StrSort>) (guards : Guards) (codTy : Ty) (rng : Range) =
+    match keys with
+    | [(varName, sort)] ->
+        TyDict(varName, sort, guards, codTy, rng)
+    | (varName, sort) :: restKeys ->
+        TyDict(varName, sort, [], makeDictChain restKeys guards codTy rng, rng)
     | [] ->
         codTy
 
 /// create a chain of dictionaries whose keys are bounded by an anonymous predicate
-let makeAnonDictChain (domSorts : List<string * StrSort>) (codTy : Ty) (rng : Range) =
+let makeAnonDictChain (keys : List<string * StrSort>) (codTy : Ty) (rng : Range) =
 
     /// the sort of the predicate bounding the dictionary chain's keys
-    let predSt = StPred(makePredSig domSorts [], noRange)
+    let predSt = StPred(makePredSig keys [], noRange)
 
     /// the anonymous predicate, applied to the keys
-    let predApp = makePredApp "***" (List.map (fun (varName, _) -> AtomVar varName) domSorts)
+    let predApp = makePredApp "***" (List.map (fun (varName, _) -> AtomVar varName) keys)
 
-    let rec makeAnonDictChainAux (domSorts : List<string * StrSort>) : Ty  =
-        match domSorts with
-        | (varName, sort) :: restDoms ->
-            TyDict(varName, sort, makeAnonDictChainAux restDoms, rng)
-        | [] ->
-            TyUnion(TyIndAbs("***", StProof(FmApp predApp, noRange), codTy, rng), rng)
-
-    TyUnion(TyIndAbs("***", predSt, makeAnonDictChainAux domSorts, rng), rng)
+    TyUnion(TyIndAbs("***", predSt, makeDictChain keys [(FmApp predApp, rng)] codTy rng, rng), rng)

@@ -1,7 +1,7 @@
 /// Compilation of the surface language to the core language.
 ///
-/// The two languages only differ at the index level, where this replaces n-ary predicates with
-/// curried functions.
+/// At the index level, this replaces n-ary predicates with curried functions. At the type level, it
+/// replaces each guard of a dictionary with a union over the guard's proofs.
 module Surface.Compile
 
 open Utils
@@ -65,8 +65,11 @@ let rec compileKind (kind : S.Kind) : C.Kind =
 
 let rec compileTy (ty : S.Ty) : C.Ty =
     match ty with
-    | S.TyDict(keyVarName, keySort, domTy, rng) ->
-        C.TyDict(keyVarName, compileStrSort keySort rng, compileTy domTy, rng)
+    | S.TyDict(keyVarName, keySort, guards, domTy, rng) ->
+        /// the values of the dictionary may rely on a proof of the guard
+        let addGuard ((guard, guardRng) : S.Formula * S.Range) (valTy : C.Ty) : C.Ty =
+            C.TyUnion(C.TyIndAbs("***", C.StProof(compileFormula guard, guardRng), valTy, noRange), noRange)
+        C.TyDict(keyVarName, compileStrSort keySort rng, List.foldBack addGuard guards (compileTy domTy), rng)
     | S.TyRecord(fields, rng) ->
         C.TyRecord(List.map (fun (name, fieldTy) -> (name, compileTy fieldTy)) fields, rng)
     | S.TyStringRef(selfVarName, boundSort, formula, rng) ->
