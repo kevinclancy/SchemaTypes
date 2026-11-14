@@ -34,7 +34,7 @@ let compileStrSort (strSort : S.StrSort) (rng : S.Range) : C.Sort =
     | S.SsLit(lit) ->
         C.StStringLit(lit, rng)
 
-/// (x1 : s1, ..., xn : sn | p1, ..., pm) -> prop becomes
+/// pred (x1 : s1, ..., xn : sn | p1, ..., pm) becomes
 /// (x1 : s1) -> ... -> (xn : sn) -> prf p1 -> ... -> prf pm -> prop
 let compilePredSig (predSig : S.PredSig) (rng : S.Range) : C.Sort =
     let addProof (proof : S.PredApp) (cod : C.Sort) =

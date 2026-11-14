@@ -1,3 +1,5 @@
 // A predicate with no string arguments.
-union (Flag : () -> prop) =>
+predicates
+    Flag()
+end
 in { d : { [k : str] Flag() : str } }

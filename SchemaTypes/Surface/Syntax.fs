@@ -157,7 +157,7 @@ type PredSig =
                     ""
                 | _ ->
                     " | " + (String.concat ", " <| List.map (fun (p : PredApp) -> p.String) this.proofs)
-            "(" + stringsStr + proofsStr + ") -> prop"
+            "(" + stringsStr + proofsStr + ")"
 
         member this.formalNames : List<string> =
             List.map fst this.strings
@@ -207,7 +207,7 @@ type Sort =
             | StProof(formula, _) ->
                 "prf " + formula.String
             | StPred(predSig, _) ->
-                predSig.String
+                "pred " + predSig.String
 
         member this.Range : Range =
             match this with
@@ -363,7 +363,17 @@ type Ty =
         member this.String : string =
             match this with
             | TyDict(keyVarName, keySort, domTy, _) ->
-                "{ [" + keyVarName + " : " + keySort.String + "] : " + domTy.String + " }"
+                /// the propositions guarding the dictionary's keys, followed by the type of its values
+                let rec splitGuards (ty : Ty) : List<Formula> * Ty =
+                    match ty with
+                    | TyUnion(TyIndAbs(_, StProof(formula, _), codTy, _), _) ->
+                        let guards, valTy = splitGuards codTy
+                        (formula :: guards, valTy)
+                    | _ ->
+                        ([], ty)
+                let guards, valTy = splitGuards domTy
+                let guardsStr = String.concat "," <| List.map (fun (guard : Formula) -> " " + guard.String) guards
+                "{ [" + keyVarName + " : " + keySort.String + "]" + guardsStr + " : " + valTy.String + " }"
             | TyRecord(fields, _) ->
                 let fieldToString ((name, ty) : string * Ty) =
                     name + " : " + ty.String
@@ -374,7 +384,20 @@ type Ty =
                 "(" + varName + " : " + domSort.String + ") => " + codTy.String
             | TyTyAbs(varName, domKind, codTy, _) ->
                 "(" + varName + " :: " + domKind.String + ") => " + codTy.String
+            | TyUnion(TyIndAbs(_, StPred(_, _), _, _), _) ->
+                /// the predicates defined by a block, followed by the block's scope
+                let rec splitPredicates (ty : Ty) : List<string * PredSig> * Ty =
+                    match ty with
+                    | TyUnion(TyIndAbs(varName, StPred(predSig, _), codTy, _), _) ->
+                        let defs, scope = splitPredicates codTy
+                        ((varName, predSig) :: defs, scope)
+                    | _ ->
+                        ([], ty)
+                let defs, scope = splitPredicates this
+                let defsStr = String.concat " " <| List.map (fun (name, predSig : PredSig) -> name + predSig.String) defs
+                "predicates " + defsStr + " end " + scope.String
             | TyUnion(indTyFun, _) ->
+                // only predicates and dictionary guards have a concrete syntax
                 "union " + indTyFun.String
             | TyTyApp(fn, arg, _) ->
                 "(" + fn.String + " !" + arg.String + ")"
@@ -622,7 +645,7 @@ and CanonicalSortContext = {
         member this.String =
             let strings' = List.filter (fun (x : string,st) -> x <> "" && x.[0] <> '_') this.strings
             let stringsStr = String.concat " , " <| List.map (fun (x,st : StrSort) -> sprintf "%s : %s" x st.String) strings'
-            let predsStr = String.concat " , " <| List.map (fun (x,st : PredSig) -> sprintf "%s : %s" x st.String) this.predicates
+            let predsStr = String.concat " , " <| List.map (fun (x,st : PredSig) -> sprintf "%s%s" x st.String) this.predicates
             sprintf "strings: %s\npredicates: %s\nproofs: %s" stringsStr predsStr this.StringProofs
 
         member this.StringProofs =

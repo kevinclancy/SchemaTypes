@@ -1,8 +1,10 @@
-﻿union (ItemId : (item : str) -> prop) =>
-union (CustId : (cust : str) -> prop) =>
-union (PurchaseId : (purchase : str) -> prop) =>
-union (CardType : (cardType : str) -> prop) =>
-union (CardId : (cust : str, card : str | CustId(cust)) -> prop) =>
+﻿predicates
+    ItemId(item : str)
+    CustId(cust : str)
+    PurchaseId(purchase : str)
+    CardType(cardType : str)
+    CardId(cust : str, card : str | CustId(cust))
+end
 
 type Card = {
     billingAddr : str,

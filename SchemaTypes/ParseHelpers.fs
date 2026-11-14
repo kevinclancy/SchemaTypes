@@ -6,17 +6,14 @@ open Surface.Syntax
 let makePredApp (pred : string) (args : List<Atom>) : PredApp =
     { pred = pred ; args = args }
 
-/// The sort of the n-ary predicates whose string formals are *strings* and which require proofs of *proofs*
-let makePredSort (strings : List<string * StrSort>) (proofs : List<PredApp>) (rng : Range) : Sort =
-    StPred({ strings = strings ; proofs = proofs }, rng)
+/// The signature of the n-ary predicates whose string formals are *strings* and which require proofs of *proofs*
+let makePredSig (strings : List<string * StrSort>) (proofs : List<PredApp>) : PredSig =
+    { strings = strings ; proofs = proofs }
 
-/// The string formals of a predicate must have string sorts
-let toStrSort (sort : Sort) : StrSort =
-    match sort with
-    | StStr(strSort, _) ->
-        strSort
-    | _ ->
-        failwith ("expected a string sort, but found " + sort.String)
+/// A block of predicate definitions whose scope is *body*. Each predicate is also in scope
+/// in the definitions that follow it.
+let makePredicates (defs : List<string * Sort>) (body : Ty) (rng : Range) : Ty =
+    List.foldBack (fun (name, sort) scope -> TyUnion(TyIndAbs(name, sort, scope, rng), rng)) defs body
 
 let rec makeDictDom (guards : List<Formula * Range>) (domTy : Ty) =
     match guards with
@@ -36,7 +33,7 @@ let rec makeDictChain (domSorts : List<string * StrSort>) (codTy : Ty) (rng : Ra
 let makeAnonDictChain (domSorts : List<string * StrSort>) (codTy : Ty) (rng : Range) =
 
     /// the sort of the predicate bounding the dictionary chain's keys
-    let predSt = makePredSort domSorts [] noRange
+    let predSt = StPred(makePredSig domSorts [], noRange)
 
     /// the anonymous predicate, applied to the keys
     let predApp = makePredApp "***" (List.map (fun (varName, _) -> AtomVar varName) domSorts)

@@ -25,8 +25,8 @@ open Utils
 %token <string> STRLITERAL
 // (string is most recent comment)
 %token <string> LSQUAREBRACK
-%token RSQUAREBRACK DOUBLECOLON UNION BANG LET IN EQUAL
-%token STR PROP PROOF TO LPAREN RPAREN COLON TRUE PIPE
+%token RSQUAREBRACK DOUBLECOLON PREDICATES END BANG LET IN EQUAL
+%token STR PROOF PRED TO LPAREN RPAREN COLON TRUE PIPE
 %token LBARBRACK RBARBRACK LANGLE RANGLE EOF ASTERISK TYPE
 %token LBRACK RBRACK JOIN DOT BACKSLASH HASH MAPSTO COMMA
 
@@ -44,13 +44,13 @@ Sort : StrSort { StStr($1, parseState.ResultRange) }
      | PROOF Formula { StProof($2, parseState.ResultRange) }
      | PredSort { $1 }
 
-// The sort of an n-ary predicate. Its formals are divided into a string section and a proof section,
+// The formals of an n-ary predicate. They are divided into a string section and a proof section,
 // which are separated by a PIPE.
-PredSort : LPAREN RPAREN TO PROP { makePredSort [] [] parseState.ResultRange }
-         | LPAREN ID COLON Sort RPAREN TO PROP { makePredSort [(snd $2, toStrSort $4)] [] parseState.ResultRange }
-         | LPAREN ID COLON Sort PIPE PredAppList RPAREN TO PROP { makePredSort [(snd $2, toStrSort $4)] $6 parseState.ResultRange }
-         | LPAREN ID COLON Sort COMMA StringFormals RPAREN TO PROP { makePredSort ((snd $2, toStrSort $4) :: $6) [] parseState.ResultRange }
-         | LPAREN ID COLON Sort COMMA StringFormals PIPE PredAppList RPAREN TO PROP { makePredSort ((snd $2, toStrSort $4) :: $6) $8 parseState.ResultRange }
+PredFormals : LPAREN RPAREN { makePredSig [] [] }
+            | LPAREN StringFormals RPAREN { makePredSig $2 [] }
+            | LPAREN StringFormals PIPE PredAppList RPAREN { makePredSig $2 $4 }
+
+PredSort : PRED PredFormals { StPred($2, parseState.ResultRange) }
 
 StringFormals : ID COLON StrSort COMMA StringFormals { (snd $1, $3) :: $5 }
               | ID COLON StrSort { [(snd $1, $3)] }
@@ -66,6 +66,12 @@ PredApp : ID LPAREN AtomList RPAREN { makePredApp (snd $1) $3 }
 
 PredAppList : PredApp COMMA PredAppList { $1 :: $3 }
             | PredApp { [$1] }
+
+// introduces a predicate, which is in scope in the definitions that follow it
+PredDef : ID PredFormals { (snd $1, StPred($2, parseState.ResultRange)) }
+
+PredDefList : { [] }
+            | PredDef PredDefList { $1 :: $2 }
 
 formula : Formula EOF { $1 }
 
@@ -103,7 +109,7 @@ SimpleType : LBRACK LSQUAREBRACK IdList RSQUAREBRACK GuardList COLON Type RBRACK
      | LBRACK ID COLON StrSort PIPE Formula RBRACK { TyStringRef(snd $2, $4, $6, parseState.ResultRange) }
      | LPAREN ID COLON Sort RPAREN MAPSTO Type { TyIndAbs(snd $2, $4, $7, parseState.ResultRange) }
      | LPAREN ID DOUBLECOLON Kind RPAREN MAPSTO Type { TyTyAbs(snd $2, $4, $7, parseState.ResultRange) }
-     | UNION LPAREN ID COLON Sort RPAREN MAPSTO Type { TyUnion(TyIndAbs(snd $3, $5, $8, parseState.ResultRange), parseState.ResultRange)  } 
+     | PREDICATES PredDefList END Type { makePredicates $2 $4 parseState.ResultRange }
      | STR { TyStringRef("_", SsString, FmTrue, parseState.ResultRange) }
      | STRLITERAL { TyStringRef("_", SsLit($1), FmTrue, parseState.ResultRange) }
      | ID { TyVar(snd $1, parseState.ResultRange) }

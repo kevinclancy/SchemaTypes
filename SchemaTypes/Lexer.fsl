@@ -38,13 +38,14 @@ rule token = parse
 | ":"			 { COLON }
 | "::"           { DOUBLECOLON }
 | "=>"           { MAPSTO }
-| "union"        { UNION }
+| "predicates"   { PREDICATES }
+| "end"          { END }
 | "let"          { LET }
 | "type"         { TYPE }
 | "in"           { IN }
 | "="            { EQUAL }
-| "prop"         { PROP }
 | "prf"          { PROOF }
+| "pred"         { PRED }
 | "true"         { TRUE }
 | "str"          { STR }
 | "->"           { TO }

@@ -1,3 +1,5 @@
 // Kind error: P takes two strings but is applied to one.
-union (P : (a : str, b : str) -> prop) =>
+predicates
+    P(a : str, b : str)
+end
 in { d : { [x : str] P(x) : str } }
