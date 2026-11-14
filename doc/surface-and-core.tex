@@ -1,0 +1,1083 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{stmaryrd}
+\usepackage{mathpartir}
+\usepackage{booktabs}
+\usepackage{placeins}
+
+% let figures share pages with text, and keep them in the section that discusses them
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.9}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.8}
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{3}
+\setcounter{totalnumber}{5}
+\usepackage[hidelinks]{hyperref}
+
+% ---------- keywords ----------
+\newcommand{\kw}[1]{\mathsf{#1}}
+\newcommand{\str}{\kw{str}}
+\newcommand{\lit}[1]{\kw{lit}\,#1}
+\newcommand{\prop}{\kw{prop}}
+\newcommand{\prf}[1]{\kw{prf}\;#1}
+\newcommand{\pred}[1]{\kw{pred}\;#1}
+\newcommand{\true}{\kw{true}}
+\newcommand{\letin}[3]{\kw{let}\;#1 = #2\;\kw{in}\;#3}
+
+% ---------- kinds ----------
+\newcommand{\proper}{\ast}
+\newcommand{\populated}{\ast^{+}}
+\newcommand{\kall}[3]{\forall #1 : #2.\,#3}
+
+% ---------- types ----------
+\newcommand{\dict}[3]{\{[#1 : #2] : #3\}}
+\newcommand{\gdict}[4]{\{[#1 : #2]\ #3 : #4\}}
+\newcommand{\refine}[3]{\{#1 : #2 \mid #3\}}
+\newcommand{\iabs}[3]{\lambda #1 : #2.\,#3}
+\newcommand{\tabs}[3]{\lambda #1 : #2.\,#3}
+\newcommand{\union}[1]{\textstyle\bigcup #1}
+\newcommand{\iapp}[2]{#1\,[#2]}
+
+% ---------- judgments ----------
+\newcommand{\emptyctx}{\diamond}
+\newcommand{\proves}{\Vdash}
+\newcommand{\isprop}{\ \kw{prop}}
+\newcommand{\discharge}[3]{#1 \vdash #2 \leadsto #3}
+\newcommand{\kinding}[4]{#1 \mid #2 \vdash #3 : #4}
+\newcommand{\sem}[1]{\llbracket #1 \rrbracket}
+\newcommand{\rulename}[1]{\textsc{#1}}
+
+% ---------- MiniMUMPS ----------
+\newcommand{\false}{\kw{false}}
+\newcommand{\ifte}[3]{\kw{if}\;#1\;\kw{then}\;#2\;\kw{else}\;#3}
+\newcommand{\isdef}[1]{\kw{isdefined}\;#1}
+\newcommand{\readm}[1]{\kw{read}\;#1}
+\newcommand{\firstten}[3]{\kw{first10}\;#1\;\kw{with}\;#2\;\kw{in}\;#3}
+
+% ---------- compilation to MiniMUMPS ----------
+\newcommand{\dproc}[2]{\langle #1;\, #2 \rangle}
+\newcommand{\supplies}[4]{#1;\, #2 \vdash #3 \Uparrow #4}
+\newcommand{\matches}[4]{#1 \vdash #2 : #3 \rhd #4}
+\newcommand{\compiles}[5]{#1;\, #2;\, #3 \vdash #4 \Rightarrow #5}
+\newcommand{\sorttest}[2]{\lceil #1 : #2 \rceil}
+\newcommand{\code}[1]{\texttt{#1}}
+
+% the heading of a group of rules; mathpar already leaves space above the rules
+\newcommand{\judgmentbox}[2]{\medskip\noindent\fbox{$#1$}\quad #2\par\vspace{-1.2\baselineskip}}
+
+\emergencystretch=3em
+
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+
+\title{The Surface, Core, and MiniMUMPS Languages of SchemaTypes}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+SchemaTypes has two schema languages. Schemas are written in the \emph{surface} language. The
+\emph{core} language is a conventional dependently sorted calculus, and every surface schema can be
+translated to it. A surface schema can also be compiled to \emph{MiniMUMPS}, a small calculus for
+reading a database, to obtain a program that tests whether a database conforms to the schema.
+
+Both schema languages have two levels. The \emph{index} level describes the logical layer of a database:
+strings, predicates on strings, and proofs that predicates hold. The \emph{type} level describes
+the physical layer. The two languages differ mainly at the index level:
+\begin{itemize}
+\item In the core language, index-level functions are curried. A predicate is applied to one argument
+  at a time, and its sort may interleave string arguments with proof arguments.
+\item In the surface language, predicates are $n$-ary. A predicate is always applied to all of its
+  string arguments at once, its proof arguments are never written, and its sort lists its string
+  formals and the proofs it requires in two separate sections.
+\end{itemize}
+At the type level, both languages are curried: index-to-type and type-to-type functions take one
+argument at a time. The type levels differ in one respect. A surface dictionary lists the
+propositions that guard its keys, while the core language expresses each guard as a union over the
+proofs of the guard.
+
+This document defines the syntax of both schema languages (Sections~\ref{sec:surface-syntax}
+and~\ref{sec:core-syntax}), the judgments that classify surface terms
+(Section~\ref{sec:surface-judgments}), and the translation from the surface language to the core
+language (Section~\ref{sec:translation}). It then defines MiniMUMPS
+(Section~\ref{sec:minimumps}) and the compilation of surface schemas to MiniMUMPS
+(Section~\ref{sec:compilation}). The two translations are independent of each other: compilation to
+MiniMUMPS starts from the surface language, not from the core language.
+
+The document does not define the judgments of the core language, the evaluation of types in either
+schema language, or the denotational semantics of types. Section~\ref{sec:implementation} relates
+the definitions to the F\# implementation.
+
+\paragraph{Conventions.}
+We write $a, b, P, Q$ for index variables, $X, Y$ for type variables, $s, t$ for string literals,
+and $\ell$ for record labels. Index variables form a single set; we use $P$ and $Q$ for variables
+that are meant to stand for predicates. A sequence $z_1, \ldots, z_n$ is abbreviated $\overline{z}$.
+Terms are identified up to renaming of bound variables, and we assume that bound variables are
+chosen so that the variables bound by a context are distinct. We write $[e/a]$ for the
+capture-avoiding substitution of $e$ for $a$, as in $\kappa[e/a]$, and
+$[\overline{e}/\overline{a}]$ for the simultaneous substitution of each $e_i$ for $a_i$.
+
+\section{Surface syntax}
+\label{sec:surface-syntax}
+
+Figure~\ref{fig:surface-syntax} gives the abstract syntax of the surface language.
+
+\begin{figure}[!htbp]
+\[
+\begin{array}{llcll}
+\text{atom} & e & ::= & a & \text{index variable} \\
+  & & \mid & s & \text{string literal} \\[4pt]
+\text{predicate application} & \alpha & ::= & P(e_1, \ldots, e_n) & n \geq 0 \\[4pt]
+\text{formula} & \varphi, \psi & ::= & \true & \\
+  & & \mid & \alpha & \\[4pt]
+\text{string sort} & c, d & ::= & \str & \text{all strings} \\
+  & & \mid & \lit{s} & \text{only the string } s \\[4pt]
+\text{signature} & S & ::= & (a_1 : c_1, \ldots, a_n : c_n \mid \alpha_1, \ldots, \alpha_m)
+  & n, m \geq 0 \\[4pt]
+\text{sort} & q & ::= & c & \text{strings} \\
+  & & \mid & \prf{\varphi} & \text{proofs of } \varphi \\
+  & & \mid & \pred{S} & \text{predicates} \\[4pt]
+\text{kind} & \kappa, \rho & ::= & \proper & \text{proper types} \\
+  & & \mid & \populated & \text{populated proper types} \\
+  & & \mid & \kappa \to \rho & \text{type-to-type operators} \\
+  & & \mid & \kall{a}{q}{\kappa} & \text{index-to-type operators} \\[4pt]
+\text{type} & \tau, \sigma & ::= & X & \text{type variable} \\
+  & & \mid & \gdict{a}{c}{\varphi_1, \ldots, \varphi_k}{\tau} & \text{dictionary, } k \geq 0 \\
+  & & \mid & \{\ell_1 : \tau_1, \ldots, \ell_n : \tau_n\} & \text{record, } n \geq 1 \\
+  & & \mid & \refine{a}{c}{\varphi} & \text{string refinement} \\
+  & & \mid & \iabs{a}{q}{\tau} & \text{index-to-type abstraction} \\
+  & & \mid & \tabs{X}{\kappa}{\tau} & \text{type-to-type abstraction} \\
+  & & \mid & \union{\tau} & \text{union} \\
+  & & \mid & \tau\;\sigma & \text{type application} \\
+  & & \mid & \iapp{\tau}{e} & \text{index application} \\
+  & & \mid & \letin{X}{\tau}{\sigma} & \text{type definition} \\[4pt]
+\text{sort context} & \Omega, \Psi & ::= & \emptyctx \;\mid\; \Omega, a : q & \\[2pt]
+\text{kind context} & \Gamma & ::= & \emptyctx \;\mid\; \Gamma, X : \kappa &
+\end{array}
+\]
+\caption{Abstract syntax of the surface language}
+\label{fig:surface-syntax}
+\end{figure}
+
+\paragraph{Index level.}
+An \emph{atom} is an index variable or a string literal. Atoms are the only indices that can be
+passed as arguments. A \emph{predicate application} $P(e_1, \ldots, e_n)$ applies the predicate
+variable $P$ to all of its string arguments. A \emph{formula} is a predicate application or the
+trivial proposition $\true$. Substitution also replaces a variable in predicate position:
+$P(\overline{e})[Q/P] = Q(\overline{e})$.
+
+A \emph{signature} $(a_1 : c_1, \ldots, a_n : c_n \mid \alpha_1, \ldots, \alpha_m)$ describes an
+$n$-ary predicate. Its \emph{string section} $a_1 : c_1, \ldots, a_n : c_n$ names the predicate's
+string formals and gives their sorts. Its \emph{proof section} $\alpha_1, \ldots, \alpha_m$ lists
+propositions that must be proven wherever the predicate is applied. The formals
+$a_1, \ldots, a_n$ are bound in the proof section. For example, a predicate with signature
+\[ (\mathit{cust} : \str,\ \mathit{card} : \str \mid \mathit{CustId}(\mathit{cust})) \]
+relates two strings, and may only be applied to $\mathit{cust}$ and $\mathit{card}$ where
+$\mathit{CustId}(\mathit{cust})$ is known to hold.
+
+There are three forms of sort. A string sort $c$ classifies strings, $\prf{\varphi}$ classifies
+proofs of $\varphi$, and $\pred{S}$ classifies predicates with signature $S$. There is no sort of
+propositions: formulas are a separate syntactic category, so no variable stands for a
+proposition.
+
+\paragraph{Type level.}
+The keys of the dictionary type $\gdict{a}{c}{\varphi_1, \ldots, \varphi_k}{\tau}$ are the strings
+$a$ of sort $c$ that satisfy the \emph{guards} $\varphi_1, \ldots, \varphi_k$, and its values have
+type $\tau$. The key variable $a$ is bound in the guards and in $\tau$. A dictionary may have no
+guards. In the
+refinement $\refine{a}{c}{\varphi}$ the variable $a$ is bound in $\varphi$. In the kind
+$\kall{a}{q}{\kappa}$ and the abstraction $\iabs{a}{q}{\tau}$ the variable $a$ is bound in $\kappa$
+and $\tau$ respectively, but not in $q$. Record labels are distinct. A union $\union{\tau}$ is taken
+over a type $\tau$ that is an index-to-type operator.
+
+\FloatBarrier
+\subsection{Concrete syntax and derived forms}
+\label{sec:concrete}
+
+Table~\ref{tab:concrete} shows how the abstract syntax is written. In the concrete syntax, index
+variables, type variables, and record labels are identifiers, and string literals are quoted.
+
+\begin{table}[!htbp]
+\centering
+\begin{tabular}{ll}
+\toprule
+Abstract & Concrete \\
+\midrule
+$P(e_1, \ldots, e_n)$ & \code{P($e_1$, \ldots, $e_n$)} \\
+$\lit{s}$ & \code{"$s$"} \\
+$\prf{\varphi}$ & \code{prf $\varphi$} \\
+$\pred{(\overline{a : c} \mid \overline{\alpha})}$
+  & \code{pred ($a_1$ :\ $c_1$, \ldots, $a_n$ :\ $c_n$ | $\alpha_1$, \ldots, $\alpha_m$)} \\
+$\proper$, \ $\populated$ & \code{*}, \ \code{**} \\
+$\kappa \to \rho$ & \code{$\kappa$ -> $\rho$} \\
+$\kall{a}{q}{\kappa}$ & \code{($a$ :\ $q$) -> $\kappa$} \\
+$\gdict{a}{c}{\varphi_1, \ldots, \varphi_k}{\tau}$, \ $k \geq 1$
+  & \code{\{ [$a$ :\ $c$] $\varphi_1$, \ldots, $\varphi_k$ :\ $\tau$ \}} \\
+$\{\ell_1 : \tau_1, \ldots, \ell_n : \tau_n\}$ & \code{\{ $\ell_1$ :\ $\tau_1$, \ldots, $\ell_n$ :\ $\tau_n$ \}} \\
+$\refine{a}{c}{\varphi}$ & \code{\{ $a$ :\ $c$ | $\varphi$ \}} \\
+$\iabs{a}{q}{\tau}$ & \code{($a$ :\ $q$) => $\tau$} \\
+$\tabs{X}{\kappa}{\tau}$ & \code{($X$ ::\ $\kappa$) => $\tau$} \\
+$\union{\tau}$ & see below \\
+$\tau\;\sigma$ & \code{($\tau$ !$\sigma$)} \\
+$\iapp{\tau}{e}$ & \code{($\tau$ $e$)} \\
+$\letin{X}{\tau}{\sigma}$ & \code{type $X$ = $\tau$ in $\sigma$} \\
+\bottomrule
+\end{tabular}
+\caption{Concrete syntax of the surface language}
+\label{tab:concrete}
+\end{table}
+
+Unions have no concrete syntax of their own, and a dictionary with a single key must be written
+with at least one guard. The following derived forms, which the parser expands, cover the other
+cases. In the expansions, $b$ and $P$ are fresh variables.
+
+\begin{description}
+\item[Predicates block.] The block
+  \code{predicates $P_1 S_1$ \ldots\ $P_n S_n$ end $\tau$} introduces the predicates
+  $P_1, \ldots, P_n$. Each $P_i$ is in scope in the signatures that follow it and in $\tau$:
+  \[ \union{(\iabs{P_1}{\pred{S_1}}{\ \cdots\ \union{(\iabs{P_n}{\pred{S_n}}{\tau})}})} \]
+\item[Multiple keys.] A dictionary may bind several keys,
+  \code{\{ [$a_1$ :\ $c_1$, \ldots, $a_n$ :\ $c_n$] $\overline{\varphi}$ :\ $\tau$ \}}. This nests
+  one dictionary for each key. The guards may mention every key, so they belong to the innermost
+  dictionary, and the dictionaries around it have no guards:
+  \[ \gdict{a_1}{c_1}{}{\ \cdots\ \gdict{a_n}{c_n}{\overline{\varphi}}{\tau}} \]
+\item[Unguarded dictionary.] A dictionary written without guards,
+  \code{\{ [$a_1$ :\ $c_1$, \ldots, $a_n$ :\ $c_n$] :\ $\tau$ \}}, is guarded by an anonymous
+  predicate:
+  \[ \union{(\iabs{P}{\pred{(a_1 : c_1, \ldots, a_n : c_n \mid\,)}}{\
+       \code{\{ [$a_1$ :\ $c_1$, \ldots, $a_n$ :\ $c_n$] $P(a_1, \ldots, a_n)$ :\ $\tau$ \}}})} \]
+\item[String types.] As types, \code{str} stands for $\refine{a}{\str}{\true}$ and \code{"$s$"}
+  stands for $\refine{a}{\lit{s}}{\true}$.
+\item[Anonymous abstraction.] \code{$q$ => $\tau$} stands for $\iabs{b}{q}{\tau}$.
+\item[Repeated arguments and definitions.]
+  \code{($\tau$ $r_1$ \ldots\ $r_n$)}, where each $r_i$ is an atom $e$ or \code{!$\sigma$},
+  applies $\tau$ to its arguments from left to right. \code{type $X_1$ = $\tau_1$ \ldots\ type $X_n$
+  = $\tau_n$ in $\sigma$} nests the definitions, so that each $X_i$ is in scope in the definitions
+  that follow it and in $\sigma$.
+\end{description}
+
+In a list of dictionary keys, a key written without a sort has sort $\str$.
+
+\FloatBarrier
+\section{Surface judgments}
+\label{sec:surface-judgments}
+
+The judgments of the surface language are listed below. The rules are syntax-directed, and
+subsumption appears only as explicit premises.
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Judgment & Meaning \\
+\midrule
+$c \leq d$ & string sort $c$ is a subsort of $d$ \\
+$\Omega \vdash e : q$ & atom $e$ has sort $q$ \\
+$\Omega \proves \varphi$ & $\Omega$ contains a proof of $\varphi$ \\
+$\Omega \vdash \varphi \isprop$ & $\varphi$ is a proposition \\
+$\Omega \vdash q$ & $q$ is a well-formed sort \\
+$\Omega \vdash$ & $\Omega$ is a well-formed sort context \\
+$q \leq q'$ & sort $q$ is a subsort of $q'$ \\
+$\Omega \vdash \kappa$ & $\kappa$ is a well-formed kind \\
+$\kappa \leq \kappa'$ & kind $\kappa$ is a subkind of $\kappa'$ \\
+$\discharge{\Omega}{\kappa}{\kappa'}$ & discharging the proofs that $\kappa$ asks for leaves $\kappa'$ \\
+$\kinding{\Omega}{\Gamma}{\tau}{\kappa}$ & type $\tau$ has kind $\kappa$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Index level}
+
+Figures~\ref{fig:formula-judgments} and~\ref{fig:sort-judgments} give the index-level rules.
+
+\begin{figure}[!htbp]
+\judgmentbox{c \leq d}{String subsorting}
+\begin{mathpar}
+\inferrule*[right=\rulename{C-Str}]{ }{c \leq \str}
+\and
+\inferrule*[right=\rulename{C-Lit}]{ }{\lit{s} \leq \lit{s}}
+\end{mathpar}
+
+\judgmentbox{\Omega \vdash e : q}{Atom sorting}
+\begin{mathpar}
+\inferrule*[right=\rulename{A-Var}]{(a : q) \in \Omega}{\Omega \vdash a : q}
+\and
+\inferrule*[right=\rulename{A-Lit}]{ }{\Omega \vdash s : \lit{s}}
+\end{mathpar}
+
+\judgmentbox{\Omega \proves \varphi}{Entailment}
+\begin{mathpar}
+\inferrule*[right=\rulename{E-True}]{ }{\Omega \proves \true}
+\and
+\inferrule*[right=\rulename{E-Hyp}]{(b : \prf{\alpha}) \in \Omega}{\Omega \proves \alpha}
+\end{mathpar}
+
+\judgmentbox{\Omega \vdash \varphi \isprop}{Formula formation}
+\begin{mathpar}
+\inferrule*[right=\rulename{F-True}]{ }{\Omega \vdash \true \isprop}
+\and
+\inferrule*[right=\rulename{F-App}]
+  {(P : \pred{(a_1 : c_1, \ldots, a_n : c_n \mid \alpha_1, \ldots, \alpha_m)}) \in \Omega \\\\
+   \Omega \vdash e_i : d_i \quad d_i \leq c_i \quad (1 \leq i \leq n) \\\\
+   \Omega \proves \alpha_j[\overline{e}/\overline{a}] \quad (1 \leq j \leq m)}
+  {\Omega \vdash P(e_1, \ldots, e_n) \isprop}
+\end{mathpar}
+
+\caption{Atoms and formulas of the surface language}
+\label{fig:formula-judgments}
+\end{figure}
+
+\begin{figure}[!htbp]
+\judgmentbox{\Omega \vdash q}{Sort formation}
+\begin{mathpar}
+\inferrule*[right=\rulename{S-Str}]{ }{\Omega \vdash c}
+\and
+\inferrule*[right=\rulename{S-Prf}]{\Omega \vdash \varphi \isprop}{\Omega \vdash \prf{\varphi}}
+\and
+\inferrule*[right=\rulename{S-Pred}]
+  {a_1, \ldots, a_n \text{ distinct} \\\\
+   \Omega,\ \overline{a : c},\ b_1 : \prf{\alpha_1},\ \ldots,\ b_{j-1} : \prf{\alpha_{j-1}}
+     \vdash \alpha_j \isprop \quad (1 \leq j \leq m)}
+  {\Omega \vdash \pred{(a_1 : c_1, \ldots, a_n : c_n \mid \alpha_1, \ldots, \alpha_m)}}
+\end{mathpar}
+
+\judgmentbox{\Omega \vdash}{Sort context formation}
+\begin{mathpar}
+\inferrule*[right=\rulename{Ctx-Empty}]{ }{\emptyctx \vdash}
+\and
+\inferrule*[right=\rulename{Ctx-Ext}]
+  {\Omega \vdash \\ \Omega \vdash q \\ a \notin \mathrm{dom}(\Omega)}
+  {\Omega, a : q \vdash}
+\end{mathpar}
+
+\judgmentbox{q \leq q'}{Subsorting, which extends string subsorting to all sorts}
+\begin{mathpar}
+\inferrule*[right=\rulename{Q-Prf}]{ }{\prf{\varphi} \leq \prf{\varphi}}
+\and
+\inferrule*[right=\rulename{Q-Pred}]
+  {c'_i \leq c_i \quad (1 \leq i \leq n) \\
+   \{\alpha_1, \ldots, \alpha_m\} = \{\alpha'_1, \ldots, \alpha'_{m'}\}}
+  {\pred{(a_1 : c_1, \ldots, a_n : c_n \mid \alpha_1, \ldots, \alpha_m)}
+   \leq \pred{(a_1 : c'_1, \ldots, a_n : c'_n \mid \alpha'_1, \ldots, \alpha'_{m'})}}
+\end{mathpar}
+\caption{Sorts and sort contexts of the surface language}
+\label{fig:sort-judgments}
+\end{figure}
+
+\paragraph{Atoms.} A variable has the sort that the context assigns to it. A string literal $s$
+has the singleton sort $\lit{s}$, which is a subsort of $\str$.
+
+\paragraph{Entailment.} Proofs are irrelevant: all that matters about a proof is that the context
+contains one. $\Omega \proves \alpha$ holds when $\Omega$ binds some variable to $\prf{\alpha}$.
+Propositions are compared syntactically, so entailment performs no reasoning beyond looking a
+proposition up.
+
+\paragraph{Formulas.} Rule \rulename{F-App} is where the two sections of a signature are used. The
+string section fixes the number of arguments and their sorts. The proof section is instantiated
+with the arguments, and each of the resulting propositions must be entailed by the context. The
+arguments must have string sorts, because only string sorts are subsorts of a string sort.
+
+\paragraph{Sorts.} String sorts are always well formed. In rule \rulename{S-Pred}, each proposition
+of the proof section is checked under the assumption that the propositions before it hold, so a
+proposition may rely on proofs that the same signature asks for earlier. The order of the proof
+section matters for this rule only; rule \rulename{Q-Pred} compares proof sections as sets.
+
+\paragraph{Subsorting.} Subsorting on sorts includes the string subsorting rules \rulename{C-Str}
+and \rulename{C-Lit}. A predicate may be used where a predicate of a different signature is
+expected if it accepts at least the same strings and requires the same proofs. In
+\rulename{Q-Pred} the two signatures are first renamed to have the same formals. Proof sorts
+are subsorts only of themselves.
+
+\FloatBarrier
+\subsection{Kinds}
+
+Figure~\ref{fig:kind-judgments} gives the rules for kinds. A proper type describes a set of
+database instances. The kind $\populated$ classifies the proper types whose instances are
+guaranteed to hold data; code generation uses it to decide which locations witness that a
+predicate holds.
+
+\begin{figure}[!htbp]
+\judgmentbox{\Omega \vdash \kappa}{Kind formation}
+\begin{mathpar}
+\inferrule*[right=\rulename{KF-Proper}]{ }{\Omega \vdash \proper}
+\and
+\inferrule*[right=\rulename{KF-Populated}]{ }{\Omega \vdash \populated}
+\and
+\inferrule*[right=\rulename{KF-Arrow}]
+  {\Omega \vdash \kappa \\ \Omega \vdash \rho}
+  {\Omega \vdash \kappa \to \rho}
+\and
+\inferrule*[right=\rulename{KF-All}]
+  {\Omega \vdash q \\ \Omega, a : q \vdash \kappa}
+  {\Omega \vdash \kall{a}{q}{\kappa}}
+\end{mathpar}
+
+\judgmentbox{\kappa \leq \kappa'}{Subkinding}
+\begin{mathpar}
+\inferrule*[right=\rulename{SK-Proper}]{ }{\proper \leq \proper}
+\and
+\inferrule*[right=\rulename{SK-Populated}]{ }{\populated \leq \populated}
+\and
+\inferrule*[right=\rulename{SK-Forget}]{ }{\populated \leq \proper}
+\and
+\inferrule*[right=\rulename{SK-Arrow}]
+  {\kappa_2 \leq \kappa_1 \\ \rho_1 \leq \rho_2}
+  {\kappa_1 \to \rho_1 \leq \kappa_2 \to \rho_2}
+\and
+\inferrule*[right=\rulename{SK-All}]
+  {q_2 \leq q_1 \\ \kappa_1 \leq \kappa_2}
+  {\kall{a}{q_1}{\kappa_1} \leq \kall{a}{q_2}{\kappa_2}}
+\end{mathpar}
+
+\judgmentbox{\discharge{\Omega}{\kappa}{\kappa'}}{Proof discharge}
+\begin{mathpar}
+\inferrule*[right=\rulename{D-Prf}]
+  {\Omega \proves \varphi \\ \discharge{\Omega}{\kappa}{\kappa'}}
+  {\discharge{\Omega}{\kall{b}{\prf{\varphi}}{\kappa}}{\kappa'}}
+\and
+\inferrule*[right=\rulename{D-Done}]
+  {\kappa \text{ is not of the form } \kall{b}{\prf{\varphi}}{\rho}}
+  {\discharge{\Omega}{\kappa}{\kappa}}
+\end{mathpar}
+\caption{Kind-level judgments of the surface language}
+\label{fig:kind-judgments}
+\end{figure}
+
+Proof discharge is how proof arguments are supplied without being written.
+$\discharge{\Omega}{\kappa}{\kappa'}$ strips the leading proof parameters from $\kappa$, provided
+that $\Omega$ entails each of them. If $\kappa$ begins with a proof parameter that $\Omega$ does not
+entail, no rule applies. Because proofs are irrelevant, the variable $b$ of a proof parameter does
+not occur in the rest of the kind, so \rulename{D-Prf} has nothing to substitute.
+
+\subsection{Kinding}
+
+Figure~\ref{fig:kinding} gives the kinding rules. A \emph{schema} is a type $\tau$ such that
+$\kinding{\emptyctx}{\emptyctx}{\tau}{\kappa}$ for some kind $\kappa \leq \proper$.
+
+\begin{figure}[!htbp]
+\judgmentbox{\kinding{\Omega}{\Gamma}{\tau}{\kappa}}{Kinding}
+\begin{mathpar}
+\inferrule*[right=\rulename{K-Var}]
+  {(X : \kappa) \in \Gamma}
+  {\kinding{\Omega}{\Gamma}{X}{\kappa}}
+\and
+\inferrule*[right=\rulename{K-Dict}]
+  {\Omega,\ a : c,\ b_1 : \prf{\varphi_1},\ \ldots,\ b_{j-1} : \prf{\varphi_{j-1}}
+     \vdash \varphi_j \isprop \quad (1 \leq j \leq k) \\\\
+   \kinding{\Omega,\ a : c,\ \overline{b : \prf{\varphi}}}{\Gamma}{\tau}{\kappa} \\ \kappa \leq \proper}
+  {\kinding{\Omega}{\Gamma}{\gdict{a}{c}{\varphi_1, \ldots, \varphi_k}{\tau}}{\proper}}
+\and
+\inferrule*[right=\rulename{K-Record}]
+  {\kinding{\Omega}{\Gamma}{\tau_i}{\kappa_i} \quad \kappa_i \leq \proper \quad (1 \leq i \leq n)}
+  {\kinding{\Omega}{\Gamma}{\{\ell_1 : \tau_1, \ldots, \ell_n : \tau_n\}}
+    {\textstyle\bigsqcup_i \kappa_i}}
+\and
+\inferrule*[right=\rulename{K-Refine}]
+  {\Omega, a : c \vdash \varphi \isprop}
+  {\kinding{\Omega}{\Gamma}{\refine{a}{c}{\varphi}}{\populated}}
+\and
+\inferrule*[right=\rulename{K-IndAbs}]
+  {\Omega \vdash q \\ \kinding{\Omega, a : q}{\Gamma}{\tau}{\kappa}}
+  {\kinding{\Omega}{\Gamma}{\iabs{a}{q}{\tau}}{\kall{a}{q}{\kappa}}}
+\and
+\inferrule*[right=\rulename{K-TyAbs}]
+  {\Omega \vdash \kappa \\ \kinding{\Omega}{\Gamma, X : \kappa}{\tau}{\rho}}
+  {\kinding{\Omega}{\Gamma}{\tabs{X}{\kappa}{\tau}}{\kappa \to \rho}}
+\and
+\inferrule*[right=\rulename{K-Union}]
+  {\kinding{\Omega}{\Gamma}{\tau}{\kall{a}{q}{\kappa}} \\ \kappa \leq \proper}
+  {\kinding{\Omega}{\Gamma}{\union{\tau}}{\proper}}
+\and
+\inferrule*[right=\rulename{K-TyApp}]
+  {\kinding{\Omega}{\Gamma}{\tau}{\kappa \to \rho} \\
+   \kinding{\Omega}{\Gamma}{\sigma}{\kappa'} \\ \kappa' \leq \kappa}
+  {\kinding{\Omega}{\Gamma}{\tau\;\sigma}{\rho}}
+\and
+\inferrule*[right=\rulename{K-IndApp}]
+  {\kinding{\Omega}{\Gamma}{\tau}{\kall{a}{q}{\kappa}} \\
+   \Omega \vdash e : q' \\ q' \leq q \\
+   \discharge{\Omega}{\kappa[e/a]}{\kappa'}}
+  {\kinding{\Omega}{\Gamma}{\iapp{\tau}{e}}{\kappa'}}
+\and
+\inferrule*[right=\rulename{K-Let}]
+  {\kinding{\Omega}{\Gamma}{\tau}{\kappa} \\ \kinding{\Omega}{\Gamma, X : \kappa}{\sigma}{\rho}}
+  {\kinding{\Omega}{\Gamma}{\letin{X}{\tau}{\sigma}}{\rho}}
+\end{mathpar}
+In \rulename{K-Record}, $\bigsqcup_i \kappa_i$ is $\populated$ if $\kappa_i = \populated$ for some
+$i$, and $\proper$ otherwise.
+\caption{Kinding of surface types}
+\label{fig:kinding}
+\end{figure}
+
+A dictionary has kind $\proper$ even when its values are populated, because it may have no
+entries. A record is populated if at least one of its fields is. A refinement is a location that
+holds a string, so it is always populated.
+
+Rule \rulename{K-IndApp} applies a type to one atom and then discharges the proof parameters that
+follow. For example, suppose $\tau$ has kind
+$\kall{a}{\str}{\kall{b}{\prf{P(a)}}{\proper}}$ and $\Omega$ binds $x : \str$. Then $\iapp{\tau}{x}$
+has kind $\proper$ if $\Omega \proves P(x)$, and has no kind otherwise. Proof parameters are
+discharged only at this point. A type whose kind begins with a proof parameter, such as
+$\iabs{b}{\prf{\varphi}}{\tau}$, cannot be applied to anything except a variable $b'$ that $\Omega$
+binds to $\prf{\varphi}$. Only a variable can be passed where a predicate or a proof is expected,
+because a string literal has a string sort.
+
+Guards put proofs into the context. Rule \rulename{K-Dict} checks each guard under the assumption
+that the guards before it hold, and checks the type of the values under the assumption that all of
+the guards hold. By the expansion in Section~\ref{sec:concrete}, a predicates block is checked
+under \rulename{K-Union} and \rulename{K-IndAbs}, which extend the context with its predicates.
+
+\begin{remark}
+The rules do not have $\Omega \vdash$ as a premise. Starting from the empty context, a derivation
+extends the context only in \rulename{K-Refine}, which adds a string sort, in \rulename{K-IndAbs}
+and \rulename{KF-All}, which check the sort they add, and in \rulename{K-Dict} and
+\rulename{S-Pred}, which add string sorts and the propositions they have just checked.
+\end{remark}
+
+\FloatBarrier
+\section{Core syntax}
+\label{sec:core-syntax}
+
+Figure~\ref{fig:core-syntax} gives the abstract syntax of the core language. We use the same
+metavariables for the kinds, types, and contexts of both languages; the index and sort levels use
+different ones. The core language has no concrete syntax.
+
+\begin{figure}[!htbp]
+\[
+\begin{array}{llcll}
+\text{index} & i, j, k & ::= & a & \text{index variable} \\
+  & & \mid & s & \text{string literal} \\
+  & & \mid & \true & \text{true proposition} \\
+  & & \mid & i\;j & \text{index application} \\[4pt]
+\text{sort} & p, r & ::= & \str & \text{string sort} \\
+  & & \mid & \lit{s} & \text{literal sort} \\
+  & & \mid & \prop & \text{proposition sort} \\
+  & & \mid & \prf{i} & \text{proof sort} \\
+  & & \mid & (a : p) \to r & \text{function sort} \\[4pt]
+\text{kind} & \kappa, \rho & ::= & \proper \;\mid\; \populated \;\mid\; \kappa \to \rho
+  \;\mid\; \kall{a}{p}{\kappa} & \\[4pt]
+\text{type} & \tau, \sigma & ::= & X & \text{type variable} \\
+  & & \mid & \dict{a}{p}{\tau} & \text{dictionary} \\
+  & & \mid & \{\ell_1 : \tau_1, \ldots, \ell_n : \tau_n\} & \text{record} \\
+  & & \mid & \refine{a}{p}{i} & \text{string refinement} \\
+  & & \mid & \iabs{a}{p}{\tau} & \text{index-to-type abstraction} \\
+  & & \mid & \tabs{X}{\kappa}{\tau} & \text{type-to-type abstraction} \\
+  & & \mid & \union{\tau} & \text{union} \\
+  & & \mid & \tau\;\sigma & \text{type application} \\
+  & & \mid & \iapp{\tau}{i} & \text{index application} \\
+  & & \mid & \letin{X}{\tau}{\sigma} & \text{type definition} \\[4pt]
+\text{sort context} & \Omega, \Psi & ::= & \emptyctx \;\mid\; \Omega, a : p & \\[2pt]
+\text{kind context} & \Gamma & ::= & \emptyctx \;\mid\; \Gamma, X : \kappa &
+\end{array}
+\]
+\caption{Abstract syntax of the core language}
+\label{fig:core-syntax}
+\end{figure}
+
+Core indices form a single syntactic category that contains strings, propositions, and functions.
+A predicate is an index of function sort, and it is applied to one argument at a time. In the
+function sort $(a : p) \to r$ the variable $a$ is bound in $r$; we write $p \to r$ when $a$ does not
+occur in $r$. Unlike the surface language, the core language has a sort $\prop$ of propositions,
+which is the codomain of predicates, and the sort of a predicate may place its proof arguments
+anywhere among its string arguments.
+
+Core types have the same forms as surface types, with the following differences. A core dictionary
+has no guards. The key of a dictionary and the variable of a refinement may be annotated with any
+sort. The formula of a refinement is an arbitrary index, and a type may be applied to an arbitrary
+index.
+
+\FloatBarrier
+\section{Translation}
+\label{sec:translation}
+
+Figure~\ref{fig:translation} defines the translation $\sem{-}$ from the surface language to the
+core language. It is a homomorphism on kinds, and on types other than dictionaries. It does three
+things.
+
+\begin{figure}[!htbp]
+\textbf{Atoms and formulas}
+\begin{align*}
+\sem{a} &= a &
+\sem{s} &= s &
+\sem{\true} &= \true &
+\sem{P(e_1, \ldots, e_n)} &= P\;\sem{e_1}\;\cdots\;\sem{e_n}
+\end{align*}
+\textbf{Sorts}
+\begin{align*}
+\sem{\str} &= \str &
+\sem{\lit{s}} &= \lit{s} &
+\sem{\prf{\varphi}} &= \prf{\sem{\varphi}}
+\end{align*}
+\begin{align*}
+\sem{\pred{(a_1 : c_1, \ldots, a_n : c_n \mid \alpha_1, \ldots, \alpha_m)}}
+  &= (a_1 : \sem{c_1}) \to \cdots \to (a_n : \sem{c_n}) \to {} \\
+  &\phantom{{}={}} \prf{\sem{\alpha_1}} \to \cdots \to \prf{\sem{\alpha_m}} \to \prop
+\end{align*}
+\textbf{Kinds}
+\begin{align*}
+\sem{\proper} &= \proper &
+\sem{\populated} &= \populated &
+\sem{\kappa \to \rho} &= \sem{\kappa} \to \sem{\rho} &
+\sem{\kall{a}{q}{\kappa}} &= \kall{a}{\sem{q}}{\sem{\kappa}}
+\end{align*}
+\textbf{Types}
+\begin{align*}
+\sem{\gdict{a}{c}{\varphi_1, \ldots, \varphi_k}{\tau}}
+  &= \dict{a}{\sem{c}}{\ \union{(\iabs{b_1}{\prf{\sem{\varphi_1}}}{\ \cdots\
+       \union{(\iabs{b_k}{\prf{\sem{\varphi_k}}}{\sem{\tau}})}})}}
+\end{align*}
+\begin{align*}
+\sem{X} &= X &
+\sem{\{\overline{\ell : \tau}\}} &= \{\overline{\ell : \sem{\tau}}\} \\
+\sem{\refine{a}{c}{\varphi}} &= \refine{a}{\sem{c}}{\sem{\varphi}} &
+\sem{\iabs{a}{q}{\tau}} &= \iabs{a}{\sem{q}}{\sem{\tau}} \\
+\sem{\tabs{X}{\kappa}{\tau}} &= \tabs{X}{\sem{\kappa}}{\sem{\tau}} &
+\sem{\union{\tau}} &= \union{\sem{\tau}} \\
+\sem{\tau\;\sigma} &= \sem{\tau}\;\sem{\sigma} &
+\sem{\iapp{\tau}{e}} &= \iapp{\sem{\tau}}{\sem{e}} \\
+\sem{\letin{X}{\tau}{\sigma}} &= \letin{X}{\sem{\tau}}{\sem{\sigma}}
+\end{align*}
+\textbf{Contexts}
+\begin{align*}
+\sem{\emptyctx} &= \emptyctx &
+\sem{\Omega, a : q} &= \sem{\Omega}, a : \sem{q} &
+\sem{\Gamma, X : \kappa} &= \sem{\Gamma}, X : \sem{\kappa}
+\end{align*}
+In the translation of a dictionary, $b_1, \ldots, b_k$ are fresh variables.
+\caption{Translation from the surface language to the core language}
+\label{fig:translation}
+\end{figure}
+
+\paragraph{Predicate applications are curried.} $P(e_1, \ldots, e_n)$ becomes the left-nested
+application $(\cdots(P\;\sem{e_1})\cdots)\;\sem{e_n}$. A nullary application $P()$ becomes the
+variable $P$.
+
+\paragraph{Signatures become function sorts.} The string section becomes a sequence of dependent
+function sorts, one for each string formal, in order. The proof section becomes a sequence of
+function sorts from proofs, in order, placed after all of the string formals. The codomain is
+$\prop$. Because the string formals are bound in the proof section of a signature, they are bound
+in the translated proof sorts as well. The proof arguments bind no variable.
+
+For example, the signature of $\mathit{CardId}$ from Section~\ref{sec:surface-syntax} translates
+as
+\begin{align*}
+& \sem{\pred{(\mathit{cust} : \str,\ \mathit{card} : \str \mid \mathit{CustId}(\mathit{cust}))}} \\
+& \qquad = (\mathit{cust} : \str) \to (\mathit{card} : \str) \to
+       \prf{(\mathit{CustId}\;\mathit{cust})} \to \prop
+\end{align*}
+and the application $\mathit{CardId}(c, x)$ translates to $(\mathit{CardId}\;c)\;x$. The translated
+application is not yet a proposition: it is a function that awaits a proof of
+$\mathit{CustId}\;c$. The surface rule \rulename{F-App} requires the context to entail
+$\mathit{CustId}(c)$, which is what allows the core language to supply that proof.
+
+\paragraph{Guards become unions.} A core dictionary has no guards. Each guard of a surface
+dictionary becomes a union over the proofs of the guard, wrapped around the translated type of the
+values, in order. Under the abstraction $\iabs{b_j}{\prf{\sem{\varphi_j}}}{\cdots}$ a proof of the
+guard is in the context, which is how the core language expresses that the values of the
+dictionary may rely on the guard.
+
+\paragraph{Intended property.} The translation is meant to preserve kinding: if
+$\kinding{\Omega}{\Gamma}{\tau}{\kappa}$ in the surface language, then
+$\kinding{\sem{\Omega}}{\sem{\Gamma}}{\sem{\tau}}{\sem{\kappa}}$ should be derivable in the core
+language. This document does not define the core judgments, so the property is not stated
+precisely or proven here.
+
+\FloatBarrier
+\section{MiniMUMPS}
+\label{sec:minimumps}
+
+MiniMUMPS is a small calculus whose expressions read and traverse a database. A schema is compiled
+to a MiniMUMPS expression that tests whether a database conforms to it.
+
+Figure~\ref{fig:minimumps} gives the syntax and the reduction relation of MiniMUMPS. We write
+$M, N$ for expressions, $V$ for values, and $x$ for variables. Lists are written
+$[M_1, \ldots, M_n]$; a list of strings denotes a location in the database.
+
+\begin{figure}[!htbp]
+\[
+\begin{array}{llcl}
+\text{expression} & M, N & ::= & x \;\mid\; s \;\mid\; \true \;\mid\; \false
+   \;\mid\; [M_1, \ldots, M_n] \;\mid\; M = N \;\mid\; M \wedge N \\
+  & & \mid & \ifte{M}{N_1}{N_2} \;\mid\; \lambda x.\,M \;\mid\; M\;N \\
+  & & \mid & \isdef{M} \;\mid\; \readm{M} \;\mid\; \firstten{M}{x}{N} \\[4pt]
+\text{value} & V & ::= & s \;\mid\; \true \;\mid\; \false \;\mid\; [V_1, \ldots, V_n]
+   \;\mid\; \lambda x.\,M \\[4pt]
+\text{evaluation context} & E & ::= & \square \;\mid\; [\overline{V}, E, \overline{M}]
+   \;\mid\; E = M \;\mid\; V = E \;\mid\; E \wedge M \\
+  & & \mid & \ifte{E}{N_1}{N_2} \;\mid\; E\;M \;\mid\; V\;E \\
+  & & \mid & \isdef{E} \;\mid\; \readm{E} \;\mid\; \firstten{E}{x}{N}
+\end{array}
+\]
+
+\judgmentbox{I \mid M \hookrightarrow M'}{Reduction with read access to $I$}
+\begin{mathpar}
+\inferrule*[right=\rulename{R-Ctx}]
+  {I \mid M \hookrightarrow M'}
+  {I \mid E[M] \hookrightarrow E[M']}
+\and
+\inferrule*[right=\rulename{R-Beta}]{ }{I \mid (\lambda x.\,M)\;V \hookrightarrow M[V/x]}
+\and
+\inferrule*[right=\rulename{R-IfTrue}]{ }{I \mid \ifte{\true}{N_1}{N_2} \hookrightarrow N_1}
+\and
+\inferrule*[right=\rulename{R-IfFalse}]{ }{I \mid \ifte{\false}{N_1}{N_2} \hookrightarrow N_2}
+\and
+\inferrule*[right=\rulename{R-AndTrue}]{ }{I \mid \true \wedge M \hookrightarrow M}
+\and
+\inferrule*[right=\rulename{R-AndFalse}]{ }{I \mid \false \wedge M \hookrightarrow \false}
+\and
+\inferrule*[right=\rulename{R-EqTrue}]{ }{I \mid s = s \hookrightarrow \true}
+\and
+\inferrule*[right=\rulename{R-EqFalse}]{s \neq t}{I \mid s = t \hookrightarrow \false}
+\and
+\inferrule*[right=\rulename{R-Defined}]
+  {I \text{ is active at } [s_1, \ldots, s_n]}
+  {I \mid \isdef{[s_1, \ldots, s_n]} \hookrightarrow \true}
+\and
+\inferrule*[right=\rulename{R-Undefined}]
+  {I \text{ is not active at } [s_1, \ldots, s_n]}
+  {I \mid \isdef{[s_1, \ldots, s_n]} \hookrightarrow \false}
+\and
+\inferrule*[right=\rulename{R-Read}]
+  {I([s_1, \ldots, s_n]) = s}
+  {I \mid \readm{[s_1, \ldots, s_n]} \hookrightarrow s}
+\and
+\inferrule*[right=\rulename{R-First}]
+  {t_1 < \cdots < t_k \text{ are the keys of } I \text{ at } [s_1, \ldots, s_n] \\ m = \min(k, 10)}
+  {I \mid \firstten{[s_1, \ldots, s_n]}{x}{M} \hookrightarrow
+     M[t_1/x] \wedge \cdots \wedge M[t_m/x] \wedge \true}
+\end{mathpar}
+\caption{MiniMUMPS}
+\label{fig:minimumps}
+\end{figure}
+
+\paragraph{Database instances.}
+A \emph{database instance} $I$ is a finite partial function from lists of strings to strings. We
+write $l \cdot l'$ for the concatenation of the lists $l$ and $l'$. $I$ is \emph{active} at $l$ if
+$I(l \cdot l')$ is defined for some list $l'$, which may be empty. The \emph{keys} of $I$ at $l$
+are the strings $t$ such that $I$ is active at $l \cdot [t]$. We assume a fixed total order on
+strings.
+
+Three forms give access to the database. $\isdef{M}$ tests whether the instance is active at a
+location. $\readm{M}$ returns the string stored at a location, and is stuck if there is none.
+$\firstten{M}{x}{N}$ evaluates $N$ once for each of the first ten keys at a location, with $x$
+bound to the key, and takes the conjunction of the results. Conjunction evaluates its left
+operand first and does not evaluate its right operand if the left one is $\false$.
+
+We write $I \mid M \Downarrow V$ when $M$ reduces to the value $V$ in zero or more steps.
+
+\FloatBarrier
+\section{Compilation to MiniMUMPS}
+\label{sec:compilation}
+
+This section compiles a schema directly to a MiniMUMPS expression, called a \emph{tester}, without
+going through the core language. The tester is meant to evaluate to $\true$ on every database
+instance that conforms to the schema. It is a testing tool rather than a validator: it can show
+that an instance does not conform, but not that it does.
+
+\subsection{Normal types}
+
+Compilation is defined on schemas in normal form. A closed proper type in normal form contains no
+type variables, applications, or definitions, and every union in it is taken over an abstraction.
+Furthermore, the concrete syntax only produces unions over predicates. The types that we compile
+are therefore
+\[
+\begin{array}{lcl}
+\theta & ::= & \gdict{a}{c}{\varphi_1, \ldots, \varphi_k}{\theta}
+   \;\mid\; \{\ell_1 : \theta_1, \ldots, \ell_n : \theta_n\} \\
+ & \mid & \refine{a}{c}{\varphi}
+   \;\mid\; \union{(\iabs{P}{\pred{S}}{\theta})}
+\end{array}
+\]
+The implementation brings a schema into this form by evaluating it before compiling it. Evaluation
+is not defined in this document.
+
+\subsection{Locations and decision procedures}
+
+A \emph{location} $\Delta$ is a list of atoms. It describes where in the database the instances of
+a type are stored. A location is extended by a dictionary's key variable or by a record's label,
+which we treat as a string literal:
+\[ \Delta \;::=\; \epsilon \;\mid\; \Delta \cdot e \]
+Atoms are MiniMUMPS expressions, so a location $\Delta = e_1 \cdots e_n$ determines the list
+expression $[\Delta] = [e_1, \ldots, e_n]$.
+
+We use the following notation for the sections of a sort context:
+\begin{align*}
+\mathrm{str}(\Omega) &= \{ a \mid (a : c) \in \Omega \} &
+\mathrm{prf}(\Omega) &= \{ \alpha \mid (b : \prf{\alpha}) \in \Omega \}
+\end{align*}
+In the contexts that arise during compilation, $\mathrm{str}(\Omega)$ contains exactly the key
+variables of the enclosing dictionaries, all of which occur in the current location.
+
+The compiled test for a refinement $\refine{a}{c}{P(\overline{e})}$ must decide whether
+$P(\overline{e})$ holds. The predicate $P$ is abstract, so the test cannot evaluate it. Instead it
+relies on the dictionaries that $P$ guards: the keys of a dictionary guarded by $P$ are exactly the
+strings that satisfy $P$, provided that every key of the dictionary is physically present.
+
+A \emph{decision procedure} $\dproc{\Psi}{\Delta}$ pairs a sort context with a location. It records
+that a guarded dictionary whose values are populated stores its values at $\Delta$, and that
+$\Psi$ is the context of those values. The intent is that, for a conforming instance and any choice
+of strings for $\mathrm{str}(\Psi)$, the instance is active at $\Delta$ exactly when the
+propositions $\mathrm{prf}(\Psi)$ hold.
+
+\begin{figure}[!htbp]
+\judgmentbox{\supplies{\Omega}{\Delta}{\theta}{\mathcal{D}}}{$\theta$ supplies the decision procedures $\mathcal{D}$}
+\begin{mathpar}
+\inferrule*[right=\rulename{U-Refine}]{ }
+  {\supplies{\Omega}{\Delta}{\refine{a}{c}{\varphi}}{\emptyset}}
+\and
+\inferrule*[right=\rulename{U-Record}]
+  {\supplies{\Omega}{\Delta \cdot \ell_i}{\theta_i}{\mathcal{D}_i} \quad (1 \leq i \leq n)}
+  {\supplies{\Omega}{\Delta}{\{\ell_1 : \theta_1, \ldots, \ell_n : \theta_n\}}
+    {\mathcal{D}_1 \cup \cdots \cup \mathcal{D}_n}}
+\and
+\inferrule*[right=\rulename{U-Pred}]
+  {\supplies{\Omega, P : \pred{S}}{\Delta}{\theta}{\mathcal{D}}}
+  {\supplies{\Omega}{\Delta}{\union{(\iabs{P}{\pred{S}}{\theta})}}{\mathcal{D}}}
+\and
+\inferrule*[right=\rulename{U-Dict-Populated}]
+  {\Omega' = \Omega,\ a : c,\ \overline{b : \prf{\varphi}} \\ k \geq 1 \\\\
+   \supplies{\Omega'}{\Delta \cdot a}{\theta}{\mathcal{D}} \\
+   \kinding{\Omega'}{\emptyctx}{\theta}{\populated}}
+  {\supplies{\Omega}{\Delta}{\gdict{a}{c}{\varphi_1, \ldots, \varphi_k}{\theta}}
+    {\mathcal{D} \cup \{\dproc{\Omega'}{\Delta \cdot a}\}}}
+\and
+\inferrule*[right=\rulename{U-Dict}]
+  {\Omega' = \Omega,\ a : c,\ \overline{b : \prf{\varphi}} \\
+   \supplies{\Omega'}{\Delta \cdot a}{\theta}{\mathcal{D}} \\\\
+   k = 0 \ \text{ or }\ \kinding{\Omega'}{\emptyctx}{\theta}{\proper}}
+  {\supplies{\Omega}{\Delta}{\gdict{a}{c}{\varphi_1, \ldots, \varphi_k}{\theta}}{\mathcal{D}}}
+\end{mathpar}
+\caption{The decision procedures that a type supplies}
+\label{fig:supplies}
+\end{figure}
+
+Figure~\ref{fig:supplies} collects the decision procedures of a type. Only a dictionary supplies
+one, and only when it has at least one guard and its values have kind $\populated$
+(\rulename{U-Dict-Populated}). If the values of a dictionary are not populated, then a key whose
+value holds no data leaves no trace in the database, so the dictionary cannot be used to decide
+its guards. The context of the decision procedure contains the dictionary's key and all of its
+guards.
+
+\subsection{Matching}
+
+A decision procedure is stated in terms of the key variables of the dictionary that supplies it.
+To use it at a refinement, those variables must be instantiated with atoms that are available at
+the refinement.
+
+Let $\dproc{\Psi}{\Delta'}$ be a decision procedure with $A = \mathrm{prf}(\Psi)$, let $\Omega$ be
+the context of a refinement $\refine{a}{c}{\alpha}$, and let $\sigma$ be a substitution of atoms
+for the variables $\mathrm{str}(\Psi)$. We say that $\sigma$ \emph{matches} $\dproc{\Psi}{\Delta'}$
+to $\alpha$ in $\Omega$, written
+$\matches{\Omega}{\sigma}{\dproc{\Psi}{\Delta'}}{\alpha}$,
+if all of the following hold.
+\begin{description}
+\item[M1.] $\alpha \in A\sigma$ and $A\sigma \subseteq \mathrm{prf}(\Omega) \cup \{\alpha\}$.
+\item[M2.] Every variable of $\mathrm{str}(\Psi)$ occurs in $A$.
+\item[M3.] If $\Psi = \Psi_1, P : \pred{S}, \Psi_2$ and $P$ occurs in $A$, then $\sigma(x) = x$
+  for every $x \in \mathrm{str}(\Psi_1)$.
+\end{description}
+
+Condition M1 says that the decision procedure decides $\alpha$, and that everything else it
+assumes is already known at the refinement. Under M1, if $\alpha$ holds then all of $A\sigma$
+holds, so a conforming instance is active at $\Delta'\sigma$.
+
+Condition M2 ensures that the propositions determine every key on the path to the dictionary. A key
+that no proposition mentions could be instantiated with anything, and the resulting location would
+say nothing about $\alpha$.
+
+Condition M3 concerns predicates that are introduced under a dictionary, which happens when a
+predicates block or a dictionary written without guards occurs in the value type of a dictionary. Such a
+predicate stands for a different relation under each key of the enclosing dictionaries. The
+refinement is in the scope of the same predicate, so by the variable convention its context
+$\Omega$ begins with $\Psi_1$ as well, and the keys in $\Psi_1$ must be left as they are. When all
+predicates are introduced by a block at the top of the schema, M3 holds trivially.
+
+\subsection{Testers}
+
+\begin{figure}[!htbp]
+\judgmentbox{\compiles{\Omega}{\Delta}{\mathcal{D}}{\theta}{M}}{$\theta$ at location $\Delta$ compiles to the tester $M$}
+\begin{mathpar}
+\inferrule*[right=\rulename{C-Dict}]
+  {\compiles{\Omega,\ a : c,\ \overline{b : \prf{\varphi}}}{\Delta \cdot a}{\mathcal{D}}{\theta}{M}}
+  {\compiles{\Omega}{\Delta}{\mathcal{D}}{\gdict{a}{c}{\varphi_1, \ldots, \varphi_k}{\theta}}
+    {\firstten{[\Delta]}{a}{(\sorttest{a}{c} \wedge M)}}}
+\and
+\inferrule*[right=\rulename{C-Record}]
+  {\compiles{\Omega}{\Delta \cdot \ell_i}{\mathcal{D}}{\theta_i}{M_i} \quad (1 \leq i \leq n)}
+  {\compiles{\Omega}{\Delta}{\mathcal{D}}{\{\ell_1 : \theta_1, \ldots, \ell_n : \theta_n\}}
+    {M_1 \wedge \cdots \wedge M_n}}
+\and
+\inferrule*[right=\rulename{C-Refine-True}]{ }
+  {\compiles{\Omega}{\Delta}{\mathcal{D}}{\refine{a}{c}{\true}}
+    {\isdef{[\Delta]} \wedge \sorttest{\readm{[\Delta]}}{c}}}
+\and
+\inferrule*[right=\rulename{C-Refine-App}]
+  {\dproc{\Psi}{\Delta'} \in \mathcal{D} \\
+   \matches{\Omega}{\sigma}{\dproc{\Psi}{\Delta'}}{\alpha}}
+  {\compiles{\Omega}{\Delta}{\mathcal{D}}{\refine{a}{c}{\alpha}}
+    {\isdef{[\Delta]} \wedge \sorttest{\readm{[\Delta]}}{c} \wedge
+     \isdef{[\Delta'\sigma][\readm{[\Delta]}/a]}}}
+\and
+\inferrule*[right=\rulename{C-Pred}]
+  {\compiles{\Omega, P : \pred{S}}{\Delta}{\mathcal{D}}{\theta}{M}}
+  {\compiles{\Omega}{\Delta}{\mathcal{D}}{\union{(\iabs{P}{\pred{S}}{\theta})}}{M}}
+
+\end{mathpar}
+The sort test $\sorttest{M}{c}$ is defined by $\sorttest{M}{\str} = \true$ and
+$\sorttest{M}{\lit{s}} = (M = s)$.
+\caption{Compilation of normal types to testers}
+\label{fig:compilation}
+\end{figure}
+
+Figure~\ref{fig:compilation} gives the compilation rules. The judgment
+$\compiles{\Omega}{\Delta}{\mathcal{D}}{\theta}{M}$ compiles the type $\theta$, whose instances are
+stored at $\Delta$, to the tester $M$. The set $\mathcal{D}$ contains the decision procedures that
+refinements may use. The free variables of $M$ are among $\mathrm{str}(\Omega)$; they are the keys
+that the enclosing dictionaries are being traversed with.
+
+A normal schema $\theta$ \emph{compiles to} $M$ if
+\[ \supplies{\emptyctx}{\epsilon}{\theta}{\mathcal{D}} \qquad\text{and}\qquad
+   \compiles{\emptyctx}{\epsilon}{\mathcal{D}}{\theta}{M} \]
+for some $\mathcal{D}$. Compilation thus has two phases: the first collects the decision procedures
+of the whole schema, and the second generates the tester, in which a refinement may use a decision
+procedure supplied anywhere in the schema.
+
+A dictionary's tester visits keys at the dictionary's location, checks each key against the key
+sort, and tests the value stored under it (\rulename{C-Dict}). A record's tester is the conjunction
+of its fields' testers (\rulename{C-Record}). A refinement's tester checks that the location is
+active and that the string stored there belongs to the refinement's sort. If the refinement has a
+predicate application $\alpha$, the tester also consults a decision procedure that matches
+$\alpha$: it tests whether the instance is active at the decision procedure's location, after
+replacing the refinement variable $a$ with the string read from the refinement's own location
+(\rulename{C-Refine-App}). A dictionary's guards and a union's predicate are added to the context and leave no mark on the tester; predicates and
+proofs have no representation in the database.
+
+Compilation is a relation rather than a function, because \rulename{C-Refine-App} may choose among
+several decision procedures and substitutions. A schema does not compile if one of its refinements
+has no matching decision procedure.
+
+\paragraph{Example.} Consider the schema
+\begin{center}
+\begin{tabular}{l}
+\code{predicates CardType(t :\ str) end} \\
+\code{\{ cardTypes :\ \{ [t :\ str] CardType(t) :\ "*" \},} \\
+\code{\ \ favorite :\ \{ z :\ str | CardType(z) \} \}}
+\end{tabular}
+\end{center}
+The value type \code{"*"} of the dictionary is populated, so the dictionary supplies the decision
+procedure
+\[ \dproc{\ \mathit{CardType} : \pred{(t : \str \mid\,)},\ t : \str,\ b : \prf{\mathit{CardType}(t)}\ }
+         {\ \text{\code{"cardTypes"}} \cdot t\ } \]
+At the refinement, the context contains no proofs and the proposition to decide is
+$\mathit{CardType}(z)$. The substitution $\sigma = [z/t]$ matches: it sends $\mathit{CardType}(t)$
+to $\mathit{CardType}(z)$, and $t$ occurs in that proposition. Omitting the sort tests that are
+$\true$, the schema compiles to
+\begin{align*}
+& \big(\firstten{[\text{\code{"cardTypes"}}]}{t}{} \\
+& \qquad (\isdef{[\text{\code{"cardTypes"}}, t]} \wedge
+          \readm{[\text{\code{"cardTypes"}}, t]} = \text{\code{"*"}})\big) \\
+& \wedge\ \big(\isdef{[\text{\code{"favorite"}}]} \wedge
+          \isdef{[\text{\code{"cardTypes"}}, \readm{[\text{\code{"favorite"}}]}]}\big)
+\end{align*}
+The last conjunct checks that the favorite card type is one of the keys of \code{cardTypes}.
+
+\paragraph{Intended property.} If a database instance $I$ conforms to a schema that compiles to
+$M$, then $I \mid M \Downarrow \true$ should hold. Conformance is defined by the denotational
+semantics of types, which this document does not give, so the property is not stated precisely or
+proven here. The converse is not intended. A tester examines at most ten keys of each dictionary,
+and it checks that the strings in refinements are keys of the right dictionaries, but not that the
+keys of a dictionary are consistent with the rest of the instance.
+
+\FloatBarrier
+\section{Correspondence with the implementation}
+\label{sec:implementation}
+
+The syntax, the surface judgments, and the translation to the core language follow the F\#
+implementation. The surface syntax is defined in \code{Surface/Syntax.fs}, the core syntax in
+\code{Core/Syntax.fs}, and the derived forms in \code{Parser.fsy} and \code{ParseHelpers.fs}.
+Table~\ref{tab:implementation} lists the function that decides each judgment.
+
+\subsection{Surface judgments and translation}
+
+The implementation departs from Sections~\ref{sec:surface-syntax}
+to~\ref{sec:translation} in the following ways.
+\begin{itemize}
+\item \emph{Bound variables.} The implementation uses names. Where this document assumes that the
+  variables of a context are distinct, the implementation renames a bound variable when it is
+  about to add a variable that the context already binds (the \code{enter} functions of
+  \code{Surface/Syntax.fs}).
+\item \emph{Record labels.} The implementation does not check that the labels of a record are
+  distinct.
+\item \emph{Context formation.} The implementation never checks $\Omega \vdash$. It relies on the
+  observation in the remark at the end of Section~\ref{sec:surface-judgments}.
+\item \emph{Schemas.} The implementation does not check that the kind of the top-level type is a
+  subkind of $\proper$. Code generation fails on a top-level type that is not proper.
+\item \emph{Signatures.} The concrete syntax cannot express a signature with an empty string
+  section and a nonempty proof section.
+\item \emph{Core kind checker.} The implementation also has a kind checker for the core language
+  (\code{Core/KindCheck.fs}), which is not described here. It rejects the translations of some
+  schemas that the surface rules accept, because it has no counterpart to \rulename{Q-Prf} or
+  \rulename{SK-Populated}.
+\end{itemize}
+
+\subsection{Compilation to MiniMUMPS}
+
+The implementation generates testers in \code{CodeGen.fs} and matches decision procedures in
+\code{DecisionProcedures.fs}. Section~\ref{sec:compilation} specifies what that code is meant to
+compute, but the code differs from it in more ways than the rest of the implementation differs
+from the rest of this document.
+\begin{itemize}
+\item \emph{Target language.} The implementation emits MUMPS source text, not MiniMUMPS. Its
+  testers visit every key of a dictionary instead of the first ten, and print a message for each
+  discrepancy instead of returning a truth value. It expects the top-level type to be a record,
+  because MUMPS stores data in named globals.
+\item \emph{One pass.} The implementation generates the tester and collects decision procedures in
+  a single traversal. A refinement is left as a hole. The hole is filled when the traversal
+  leaves the scope of a predicate that the refinement's proposition or context mentions, using
+  only the decision procedures collected so far. As a result, whether a schema compiles can depend
+  on the order of the fields of a record.
+\item \emph{Populated types.} The implementation does not use the kind $\populated$ in
+  \rulename{U-Dict-Populated}. It recomputes whether a type is populated during code generation,
+  and treats every record as populated.
+\item \emph{Matching.} The implementation has no counterpart to condition M3. In place of
+  $\alpha \in A\sigma$ in condition M1, it only requires some proposition of $A$ to apply the same
+  predicate as $\alpha$, so it can choose a decision procedure whose location does not depend on
+  the string being tested.
+\item \emph{Refinements.} The implementation does not emit the tests $\isdef{[\Delta]}$ and
+  $\sorttest{\readm{[\Delta]}}{c}$ for a refinement, or the sort test for a dictionary key.
+\end{itemize}
+
+\begin{table}[!htbp]
+\centering
+\begin{tabular}{lll}
+\toprule
+Judgment & Function & Module \\
+\midrule
+$c \leq d$ & \code{subStrSort} & \code{Surface.SortCheck} \\
+$\Omega \vdash e : q$ & \code{sortCheckAtom} & \code{Surface.SortCheck} \\
+$\Omega \proves \varphi$ & \code{proves} & \code{Surface.SortCheck} \\
+$\Omega \vdash \varphi \isprop$ & \code{checkFormula}, \code{checkPredApp} & \code{Surface.SortCheck} \\
+$\Omega \vdash q$ & \code{wfSort} & \code{Surface.SortCheck} \\
+$\Omega \vdash$ & \code{wfSortContext} & \code{Surface.SortCheck} \\
+$q \leq q'$ & \code{subSort}, \code{subPredSig} & \code{Surface.KindCheck} \\
+$\Omega \vdash \kappa$ & \code{wfKind} & \code{Surface.KindCheck} \\
+$\kappa \leq \kappa'$ & \code{subKind} & \code{Surface.KindCheck} \\
+$\discharge{\Omega}{\kappa}{\kappa'}$ & \code{applyProofs} & \code{Surface.KindCheck} \\
+$\kinding{\Omega}{\Gamma}{\tau}{\kappa}$ & \code{kindSynth} & \code{Surface.KindCheck} \\
+$\sem{-}$ & \code{compileTy} and its helpers & \code{Surface.Compile} \\
+$\supplies{\Omega}{\Delta}{\theta}{\mathcal{D}}$ & \code{genCode}, \code{canonicalize} & \code{CodeGen}, \code{DecisionProcedures} \\
+$\matches{\Omega}{\sigma}{\dproc{\Psi}{\Delta'}}{\alpha}$ & \code{instantiate2} & \code{DecisionProcedures} \\
+$\compiles{\Omega}{\Delta}{\mathcal{D}}{\theta}{M}$ & \code{genCode} & \code{CodeGen} \\
+\bottomrule
+\end{tabular}
+\caption{Where each judgment is implemented}
+\label{tab:implementation}
+\end{table}
+
+\end{document}
